@@ -14,12 +14,10 @@ import { RuleEngine } from '../rules.js';
 import {
   createMockSession,
   createMockRule,
-  createSessionHoursAgo,
   createSessionsWithDifferentIps,
   TEST_LOCATIONS,
   calculateDistanceKm,
 } from '../../test/fixtures.js';
-import type { Session, Rule } from '@tracearr/shared';
 
 describe('RuleEngine', () => {
   let ruleEngine: RuleEngine;
@@ -62,7 +60,7 @@ describe('RuleEngine', () => {
 
       const results = await ruleEngine.evaluateSession(session, [rule], []);
       expect(results).toHaveLength(1);
-      expect(results[0].violated).toBe(true);
+      expect(results[0]!.violated).toBe(true);
     });
 
     it('should apply user-specific rules to matching users', async () => {
@@ -77,7 +75,7 @@ describe('RuleEngine', () => {
 
       const results = await ruleEngine.evaluateSession(session, [rule], []);
       expect(results).toHaveLength(1);
-      expect(results[0].violated).toBe(true);
+      expect(results[0]!.violated).toBe(true);
     });
 
     it('should return multiple violations if multiple rules trigger', async () => {
@@ -163,9 +161,9 @@ describe('RuleEngine', () => {
       );
 
       expect(results).toHaveLength(1);
-      expect(results[0].violated).toBe(true);
-      expect(results[0].severity).toBe('high');
-      expect(results[0].data).toMatchObject({
+      expect(results[0]!.violated).toBe(true);
+      expect(results[0]!.severity).toBe('high');
+      expect(results[0]!.data).toMatchObject({
         previousLocation: {
           lat: TEST_LOCATIONS.newYork.lat,
           lon: TEST_LOCATIONS.newYork.lon,
@@ -176,7 +174,7 @@ describe('RuleEngine', () => {
         },
         maxAllowedSpeed: 500,
       });
-      expect(results[0].data.calculatedSpeed).toBeGreaterThan(500);
+      expect(results[0]!.data.calculatedSpeed).toBeGreaterThan(500);
     });
 
     it('should not violate when geo data is missing on current session', async () => {
@@ -296,7 +294,7 @@ describe('RuleEngine', () => {
       );
 
       expect(results).toHaveLength(1);
-      expect(results[0].violated).toBe(true);
+      expect(results[0]!.violated).toBe(true);
     });
 
     it('should calculate distance correctly between known points', () => {
@@ -371,12 +369,12 @@ describe('RuleEngine', () => {
       );
 
       expect(results).toHaveLength(1);
-      expect(results[0].violated).toBe(true);
-      expect(results[0].severity).toBe('warning');
-      expect(results[0].data).toMatchObject({
+      expect(results[0]!.violated).toBe(true);
+      expect(results[0]!.severity).toBe('warning');
+      expect(results[0]!.data).toMatchObject({
         minRequiredDistance: 100,
       });
-      expect(results[0].data.distance).toBeGreaterThan(100);
+      expect(results[0]!.data.distance).toBeGreaterThan(100);
     });
 
     it('should ignore non-playing sessions', async () => {
@@ -534,11 +532,11 @@ describe('RuleEngine', () => {
       );
 
       expect(results).toHaveLength(1);
-      expect(results[0].violated).toBe(true);
-      expect(results[0].severity).toBe('warning');
-      expect(results[0].data.uniqueIpCount).toBe(6);
-      expect(results[0].data.maxAllowedIps).toBe(5);
-      expect(results[0].data.windowHours).toBe(24);
+      expect(results[0]!.violated).toBe(true);
+      expect(results[0]!.severity).toBe('warning');
+      expect(results[0]!.data.uniqueIpCount).toBe(6);
+      expect(results[0]!.data.maxAllowedIps).toBe(5);
+      expect(results[0]!.data.windowHours).toBe(24);
     });
 
     it('should include current session IP in count', async () => {
@@ -628,7 +626,7 @@ describe('RuleEngine', () => {
       );
 
       expect(results).toHaveLength(1);
-      expect(results[0].data.uniqueIpCount).toBe(3);
+      expect(results[0]!.data.uniqueIpCount).toBe(3);
     });
 
     it('should not double-count duplicate IPs', async () => {
@@ -705,9 +703,9 @@ describe('RuleEngine', () => {
 
       // 3 existing + 1 current = 4 (exceeds limit of 3)
       expect(results).toHaveLength(1);
-      expect(results[0].violated).toBe(true);
-      expect(results[0].severity).toBe('low');
-      expect(results[0].data).toMatchObject({
+      expect(results[0]!.violated).toBe(true);
+      expect(results[0]!.severity).toBe('low');
+      expect(results[0]!.data).toMatchObject({
         activeStreamCount: 4,
         maxAllowedStreams: 3,
       });
@@ -734,7 +732,7 @@ describe('RuleEngine', () => {
 
       // Only 1 playing + 1 current = 2, exceeds limit of 1
       expect(results).toHaveLength(1);
-      expect(results[0].data.activeStreamCount).toBe(2);
+      expect(results[0]!.data.activeStreamCount).toBe(2);
     });
 
     it('should include current session in count', async () => {
@@ -749,7 +747,7 @@ describe('RuleEngine', () => {
 
       // Current session counts as 1
       expect(results).toHaveLength(1);
-      expect(results[0].data.activeStreamCount).toBe(1);
+      expect(results[0]!.data.activeStreamCount).toBe(1);
     });
 
     it('should ignore sessions from different users', async () => {
@@ -801,9 +799,9 @@ describe('RuleEngine', () => {
       const results = await ruleEngine.evaluateSession(session, [rule], []);
 
       expect(results).toHaveLength(1);
-      expect(results[0].violated).toBe(true);
-      expect(results[0].severity).toBe('high');
-      expect(results[0].data).toMatchObject({
+      expect(results[0]!.violated).toBe(true);
+      expect(results[0]!.severity).toBe('high');
+      expect(results[0]!.data).toMatchObject({
         country: 'CN',
         blockedCountries: ['CN', 'RU', 'KP'],
       });
@@ -862,7 +860,7 @@ describe('RuleEngine', () => {
 
       const results = await ruleEngine.evaluateSession(session, [rule], []);
       expect(results).toHaveLength(1);
-      expect(results[0].data.country).toBe('KP');
+      expect(results[0]!.data.country).toBe('KP');
     });
   });
 
@@ -952,7 +950,7 @@ describe('RuleEngine', () => {
       expect(results).toHaveLength(1);
       // Earth's circumference at equator is ~40,075 km, half is ~20,000 km
       // Speed would be ~20,000 km/h
-      expect(results[0].data.calculatedSpeed).toBeGreaterThan(15000);
+      expect(results[0]!.data.calculatedSpeed).toBeGreaterThan(15000);
     });
   });
 });

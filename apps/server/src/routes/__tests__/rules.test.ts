@@ -9,7 +9,7 @@
  * - DELETE /rules/:id - Delete a rule
  */
 
-import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
 import sensible from '@fastify/sensible';
 import { randomUUID } from 'node:crypto';
@@ -87,22 +87,6 @@ function createGuestUser(): AuthUser {
     role: 'guest',
     serverIds: [randomUUID()],
   };
-}
-
-// Helper to create chainable mock
-function createChainableMock(result: any): any {
-  const mock: any = {};
-  const methods = ['select', 'from', 'leftJoin', 'innerJoin', 'where', 'orderBy', 'limit', 'offset'];
-
-  methods.forEach(method => {
-    mock[method] = vi.fn().mockReturnValue(mock);
-  });
-
-  // Terminal methods return the result
-  mock.then = (resolve: any) => resolve(result);
-  mock[Symbol.toStringTag] = 'Promise';
-
-  return mock;
 }
 
 describe('Rule Routes', () => {

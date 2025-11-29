@@ -8,7 +8,7 @@
  * - Integration with rule evaluation
  */
 
-import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import type { Rule, Session, ViolationSeverity } from '@tracearr/shared';
 import { RULE_DEFAULTS } from '@tracearr/shared';
@@ -124,15 +124,15 @@ describe('Violation Creation Flow', () => {
     it('should apply correct penalty for WARNING severity', async () => {
       const severity: ViolationSeverity = 'warning';
       const expectedPenalty = 10;
-
-      expect(severity === 'high' ? 20 : severity === 'warning' ? 10 : 5).toBe(expectedPenalty);
+      const sev = severity as ViolationSeverity;
+      expect(sev === 'high' ? 20 : sev === 'warning' ? 10 : 5).toBe(expectedPenalty);
     });
 
     it('should apply correct penalty for LOW severity', async () => {
       const severity: ViolationSeverity = 'low';
       const expectedPenalty = 5;
-
-      expect(severity === 'high' ? 20 : severity === 'warning' ? 10 : 5).toBe(expectedPenalty);
+      const sev = severity as ViolationSeverity;
+      expect(sev === 'high' ? 20 : sev === 'warning' ? 10 : 5).toBe(expectedPenalty);
     });
 
     it('should not allow trust score below 0', async () => {
@@ -397,8 +397,8 @@ describe('Violation Creation Flow', () => {
       ];
 
       expect(violations).toHaveLength(2);
-      expect(violations[0].sessionId).toBe(violations[1].sessionId);
-      expect(violations[0].ruleId).not.toBe(violations[1].ruleId);
+      expect(violations[0]!.sessionId).toBe(violations[1]!.sessionId);
+      expect(violations[0]!.ruleId).not.toBe(violations[1]!.ruleId);
     });
 
     it('should create separate violation records for each triggered rule', () => {
@@ -409,9 +409,9 @@ describe('Violation Creation Flow', () => {
       ];
 
       // Each violation has a unique ID
-      expect(violations[0].id).not.toBe(violations[1].id);
+      expect(violations[0]!.id).not.toBe(violations[1]!.id);
       // But same session
-      expect(violations[0].sessionId).toBe(violations[1].sessionId);
+      expect(violations[0]!.sessionId).toBe(violations[1]!.sessionId);
     });
   });
 

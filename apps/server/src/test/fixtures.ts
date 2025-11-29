@@ -8,6 +8,7 @@ import type {
   User,
   Violation,
   RuleType,
+  RuleParams,
   SessionState,
   MediaType,
   ViolationSeverity,
@@ -77,7 +78,7 @@ export function createMockRule<T extends RuleType>(
     id: overrides.id ?? randomUUID(),
     name: overrides.name ?? `Test ${type.replace(/_/g, ' ')} Rule`,
     type,
-    params: overrides.params ?? { ...RULE_DEFAULTS[type] },
+    params: overrides.params ?? JSON.parse(JSON.stringify(RULE_DEFAULTS[type])) as RuleParams,
     userId: overrides.userId ?? null, // Global rule by default
     isActive: overrides.isActive ?? true,
     createdAt: overrides.createdAt ?? new Date(),
