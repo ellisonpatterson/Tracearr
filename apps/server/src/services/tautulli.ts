@@ -6,6 +6,7 @@ import { eq, and } from 'drizzle-orm';
 import type { TautulliImportProgress, TautulliImportResult } from '@tracearr/shared';
 import { db } from '../db/client.js';
 import { sessions, users, settings } from '../db/schema.js';
+import { refreshAggregates } from '../db/timescale.js';
 import { geoipService } from './geoip.js';
 import type { PubSubService } from './cache.js';
 
@@ -386,6 +387,15 @@ export class TautulliService {
       }
 
       page++;
+    }
+
+    // Refresh TimescaleDB aggregates so imported data appears in stats immediately
+    progress.message = 'Refreshing aggregates...';
+    await publishProgress();
+    try {
+      await refreshAggregates();
+    } catch (err) {
+      console.warn('Failed to refresh aggregates after import:', err);
     }
 
     // Final progress update

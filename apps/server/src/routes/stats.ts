@@ -82,43 +82,26 @@ export const statsRoutes: FastifyPluginAsync = async (app) => {
       }
 
       // Get today's plays and watch time
+      // Always use raw queries for real-time dashboard stats (aggregates exclude last hour)
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
       const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-      let todayPlays = 0;
-      let watchTimeHours = 0;
+      const todayPlaysResult = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(sessions)
+        .where(gte(sessions.startedAt, todayStart));
+      const todayPlays = todayPlaysResult[0]?.count ?? 0;
 
-      if (await hasAggregates()) {
-        // Use continuous aggregate for better performance
-        const aggregateResult = await db.execute(sql`
-          SELECT
-            COALESCE(SUM(play_count), 0)::int as play_count,
-            COALESCE(SUM(total_duration_ms), 0)::bigint as total_duration_ms
-          FROM daily_plays_by_user
-          WHERE day >= ${todayStart}::date
-        `);
-        const row = aggregateResult.rows[0] as { play_count: number; total_duration_ms: string } | undefined;
-        todayPlays = row?.play_count ?? 0;
-        watchTimeHours = Math.round((Number(row?.total_duration_ms ?? 0) / (1000 * 60 * 60)) * 10) / 10;
-      } else {
-        // Fallback to raw sessions query
-        const todayPlaysResult = await db
-          .select({ count: sql<number>`count(*)::int` })
-          .from(sessions)
-          .where(gte(sessions.startedAt, todayStart));
-        todayPlays = todayPlaysResult[0]?.count ?? 0;
-
-        const watchTimeResult = await db
-          .select({
-            totalMs: sql<number>`coalesce(sum(duration_ms), 0)::bigint`,
-          })
-          .from(sessions)
-          .where(gte(sessions.startedAt, last24h));
-        watchTimeHours = Math.round(
-          (Number(watchTimeResult[0]?.totalMs ?? 0) / (1000 * 60 * 60)) * 10
-        ) / 10;
-      }
+      const watchTimeResult = await db
+        .select({
+          totalMs: sql<number>`coalesce(sum(duration_ms), 0)::bigint`,
+        })
+        .from(sessions)
+        .where(gte(sessions.startedAt, last24h));
+      const watchTimeHours = Math.round(
+        (Number(watchTimeResult[0]?.totalMs ?? 0) / (1000 * 60 * 60)) * 10
+      ) / 10;
 
       // Get alerts in last 24 hours
       const alertsResult = await db

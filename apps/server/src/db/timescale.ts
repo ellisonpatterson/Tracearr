@@ -258,6 +258,29 @@ async function enableCompression(): Promise<void> {
 }
 
 /**
+ * Manually refresh all continuous aggregates
+ * Call this after bulk data imports (e.g., Tautulli import) to make the data immediately available
+ */
+export async function refreshAggregates(): Promise<void> {
+  const hasExtension = await isTimescaleInstalled();
+  if (!hasExtension) return;
+
+  const aggregates = await getContinuousAggregates();
+
+  for (const aggregate of aggregates) {
+    try {
+      // Refresh the entire aggregate (no time bounds = full refresh)
+      await db.execute(
+        sql.raw(`CALL refresh_continuous_aggregate('${aggregate}', NULL, NULL)`)
+      );
+    } catch (err) {
+      // Log but don't fail - aggregate might not have data yet
+      console.warn(`Failed to refresh aggregate ${aggregate}:`, err);
+    }
+  }
+}
+
+/**
  * Get current TimescaleDB status
  */
 export async function getTimescaleStatus(): Promise<TimescaleStatus> {
