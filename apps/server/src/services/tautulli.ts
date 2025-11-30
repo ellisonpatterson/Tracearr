@@ -44,6 +44,8 @@ interface TautulliHistoryRecord {
   media_index: number;
   parent_media_index: number;
   thumb: string;
+  parent_thumb: string;
+  grandparent_thumb: string;
   originally_available_at: string;
   guid: string;
   transcode_decision: string;
@@ -361,6 +363,15 @@ export class TautulliService {
             state: 'stopped', // Historical data is always stopped
             mediaType,
             mediaTitle: record.full_title || record.title,
+            // Enhanced metadata from Tautulli
+            grandparentTitle: record.grandparent_title || null,
+            seasonNumber: record.parent_media_index || null,
+            episodeNumber: record.media_index || null,
+            year: record.year || null,
+            // For episodes, use show poster (grandparent_thumb); for movies, use thumb
+            thumbPath: mediaType === 'episode' && record.grandparent_thumb
+              ? record.grandparent_thumb
+              : record.thumb || null,
             startedAt,
             stoppedAt: new Date(record.stopped * 1000),
             durationMs: record.duration * 1000,
@@ -377,6 +388,8 @@ export class TautulliService {
             geoLat: geo.lat,
             geoLon: geo.lon,
             playerName: record.player || record.product,
+            deviceId: record.machine_id || null,
+            product: record.product || null,
             platform: record.platform,
             quality: record.transcode_decision === 'transcode' ? 'Transcode' : 'Direct',
             isTranscode: record.transcode_decision === 'transcode',
