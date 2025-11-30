@@ -804,7 +804,9 @@ function ImportSettings() {
                             <div
                               className="h-full bg-primary transition-all"
                               style={{
-                                width: `${Math.round((importProgress.processedRecords / importProgress.totalRecords) * 100)}%`,
+                                width: importProgress.status === 'complete'
+                                  ? '100%'
+                                  : `${Math.min(100, Math.round((importProgress.processedRecords / importProgress.totalRecords) * 100))}%`,
                               }}
                             />
                           </div>

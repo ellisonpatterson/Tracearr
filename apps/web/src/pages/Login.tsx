@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Loader2, Server, ExternalLink, Monitor, ChevronRight, Wifi, Globe } from 'lucide-react';
+import { Loader2, Server, ExternalLink, Monitor, ChevronRight, Wifi, Globe, User, KeyRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,15 +11,13 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { api, tokenStorage, type PlexServerInfo } from '@/lib/api';
 import { LogoIcon } from '@/components/brand/Logo';
 
-// Plex and Jellyfin brand colors
+// Plex brand color
 const PLEX_COLOR = 'bg-[#E5A00D] hover:bg-[#C88A0B]';
-const JELLYFIN_COLOR = 'bg-[#00A4DC] hover:bg-[#0090C1]';
 
 type AuthStep = 'initial' | 'plex-waiting' | 'server-select';
 
@@ -32,6 +30,7 @@ export function Login() {
   // Setup status
   const [setupLoading, setSetupLoading] = useState(true);
   const [needsSetup, setNeedsSetup] = useState(false);
+  const [hasPasswordAuth, setHasPasswordAuth] = useState(false);
 
   // Auth flow state
   const [authStep, setAuthStep] = useState<AuthStep>('initial');
@@ -40,12 +39,11 @@ export function Login() {
   const [plexTempToken, setPlexTempToken] = useState<string | null>(null);
   const [connectingToServer, setConnectingToServer] = useState<string | null>(null);
 
-  // Jellyfin state (always needs URL since no central discovery)
-  const [jellyfinLoading, setJellyfinLoading] = useState(false);
-  const [jellyfinServerUrl, setJellyfinServerUrl] = useState('');
-  const [jellyfinServerName, setJellyfinServerName] = useState('');
-  const [jellyfinUsername, setJellyfinUsername] = useState('');
-  const [jellyfinPassword, setJellyfinPassword] = useState('');
+  // Local auth state
+  const [localLoading, setLocalLoading] = useState(false);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('');
 
   // Check setup status on mount
   useEffect(() => {
@@ -53,6 +51,7 @@ export function Login() {
       try {
         const status = await api.setup.status();
         setNeedsSetup(status.needsSetup);
+        setHasPasswordAuth(status.hasPasswordAuth);
       } catch {
         // If we can't reach the server, assume setup needed
         setNeedsSetup(true);
@@ -89,7 +88,7 @@ export function Login() {
         setPlexTempToken(result.tempToken);
         setAuthStep('server-select');
       } else if (result.accessToken && result.refreshToken) {
-        // Returning user - auto-connected, store tokens
+        // User authenticated (returning or no servers)
         tokenStorage.setTokens(result.accessToken, result.refreshToken);
         void refetch();
         toast({ title: 'Success', description: 'Logged in successfully!' });
@@ -165,39 +164,60 @@ export function Login() {
     setConnectingToServer(null);
   };
 
-  // Handle Jellyfin login
-  const handleJellyfinLogin = async (e: React.FormEvent) => {
+  // Handle local signup
+  const handleLocalSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    setJellyfinLoading(true);
+    setLocalLoading(true);
 
     try {
-      let serverUrl = jellyfinServerUrl.trim();
-      if (!serverUrl.startsWith('http://') && !serverUrl.startsWith('https://')) {
-        serverUrl = 'http://' + serverUrl;
-      }
-      serverUrl = serverUrl.replace(/\/$/, '');
-
-      const result = await api.auth.loginJellyfin({
-        serverUrl,
-        serverName: jellyfinServerName || 'Jellyfin Server',
-        username: jellyfinUsername,
-        password: jellyfinPassword,
+      const result = await api.auth.signup({
+        username: username.trim(),
+        password,
+        email: email.trim() || undefined,
       });
 
       if (result.accessToken && result.refreshToken) {
         tokenStorage.setTokens(result.accessToken, result.refreshToken);
         void refetch();
-        toast({ title: 'Success', description: 'Connected to Jellyfin server' });
+        toast({ title: 'Success', description: 'Account created successfully!' });
         navigate('/');
       }
     } catch (error) {
       toast({
-        title: 'Authentication failed',
-        description: error instanceof Error ? error.message : 'Invalid credentials',
+        title: 'Signup failed',
+        description: error instanceof Error ? error.message : 'Failed to create account',
         variant: 'destructive',
       });
     } finally {
-      setJellyfinLoading(false);
+      setLocalLoading(false);
+    }
+  };
+
+  // Handle local login
+  const handleLocalLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLocalLoading(true);
+
+    try {
+      const result = await api.auth.loginLocal({
+        username: username.trim(),
+        password,
+      });
+
+      if (result.accessToken && result.refreshToken) {
+        tokenStorage.setTokens(result.accessToken, result.refreshToken);
+        void refetch();
+        toast({ title: 'Success', description: 'Logged in successfully!' });
+        navigate('/');
+      }
+    } catch (error) {
+      toast({
+        title: 'Login failed',
+        description: error instanceof Error ? error.message : 'Invalid username or password',
+        variant: 'destructive',
+      });
+    } finally {
+      setLocalLoading(false);
     }
   };
 
@@ -211,7 +231,7 @@ export function Login() {
     );
   }
 
-  // Server selection step (only during setup)
+  // Server selection step (only during Plex signup)
   if (authStep === 'server-select' && plexServers.length > 0) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-background p-4">
@@ -287,152 +307,164 @@ export function Login() {
         <h1 className="text-4xl font-bold tracking-tight">Tracearr</h1>
         <p className="mt-2 text-muted-foreground">
           {needsSetup
-            ? 'Connect your media server to get started'
-            : 'Sign in to your media server'}
+            ? 'Create your account to get started'
+            : 'Sign in to your account'}
         </p>
       </div>
 
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle>{needsSetup ? 'Setup' : 'Sign in'}</CardTitle>
+          <CardTitle>{needsSetup ? 'Create Account' : 'Sign In'}</CardTitle>
           <CardDescription>
             {needsSetup
-              ? 'Connect your Plex or Jellyfin server'
-              : 'Sign in with your media server account'}
+              ? 'Create an account to manage your media servers'
+              : 'Sign in to access your dashboard'}
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <Tabs defaultValue="plex" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="plex">Plex</TabsTrigger>
-              <TabsTrigger value="jellyfin">Jellyfin</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="plex" className="mt-6">
-              {authStep === 'plex-waiting' ? (
-                <div className="space-y-4">
-                  <div className="rounded-lg bg-muted/50 p-4 text-center">
-                    <Loader2 className="mx-auto h-8 w-8 animate-spin text-[#E5A00D] mb-3" />
-                    <p className="text-sm font-medium">Waiting for Plex authorization...</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Complete sign-in in the popup window
-                    </p>
-                    {plexAuthUrl && (
-                      <Button
-                        type="button"
-                        variant="link"
-                        size="sm"
-                        onClick={() => window.open(plexAuthUrl, '_blank')}
-                        className="gap-1 h-auto p-0 mt-2"
-                      >
-                        <ExternalLink className="h-3 w-3" />
-                        Reopen Plex Login
-                      </Button>
-                    )}
-                  </div>
-                  <Button variant="ghost" className="w-full" onClick={resetPlexAuth}>
-                    Cancel
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <p className="text-sm text-muted-foreground">
-                    {needsSetup
-                      ? 'Sign in with Plex to connect your server. Your servers will be detected automatically.'
-                      : 'Sign in with your Plex account.'}
-                  </p>
+        <CardContent className="space-y-6">
+          {/* Plex OAuth Section */}
+          {authStep === 'plex-waiting' ? (
+            <div className="space-y-4">
+              <div className="rounded-lg bg-muted/50 p-4 text-center">
+                <Loader2 className="mx-auto h-8 w-8 animate-spin text-[#E5A00D] mb-3" />
+                <p className="text-sm font-medium">Waiting for Plex authorization...</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Complete sign-in in the popup window
+                </p>
+                {plexAuthUrl && (
                   <Button
-                    className={`w-full ${PLEX_COLOR} text-white`}
-                    onClick={handlePlexLogin}
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    onClick={() => window.open(plexAuthUrl, '_blank')}
+                    className="gap-1 h-auto p-0 mt-2"
                   >
-                    <Server className="mr-2 h-4 w-4" />
-                    Sign in with Plex
+                    <ExternalLink className="h-3 w-3" />
+                    Reopen Plex Login
                   </Button>
+                )}
+              </div>
+              <Button variant="ghost" className="w-full" onClick={resetPlexAuth}>
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <>
+              {/* Plex Login Button - Always Available */}
+              <Button
+                className={`w-full ${PLEX_COLOR} text-white`}
+                onClick={handlePlexLogin}
+              >
+                <Server className="mr-2 h-4 w-4" />
+                {needsSetup ? 'Sign up with Plex' : 'Sign in with Plex'}
+              </Button>
+
+              {/* Divider - Show if password auth is available OR during setup */}
+              {(hasPasswordAuth || needsSetup) && (
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-card px-2 text-muted-foreground">or</span>
+                  </div>
                 </div>
               )}
-            </TabsContent>
 
-            <TabsContent value="jellyfin" className="mt-6">
-              <form onSubmit={handleJellyfinLogin} className="space-y-4">
-                {needsSetup && (
-                  <p className="text-sm text-muted-foreground">
-                    Enter your Jellyfin server details and admin credentials.
-                  </p>
-                )}
-                <div className="space-y-2">
-                  <Label htmlFor="jellyfinServerUrl">Server URL</Label>
-                  <Input
-                    id="jellyfinServerUrl"
-                    type="url"
-                    placeholder="http://localhost:8096"
-                    value={jellyfinServerUrl}
-                    onChange={(e) => { setJellyfinServerUrl(e.target.value); }}
-                    required
-                  />
-                </div>
-                {needsSetup && (
+              {/* Local Auth Form */}
+              {/* Signup form - only shown during initial setup */}
+              {needsSetup ? (
+                <form onSubmit={handleLocalSignup} className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="jellyfinServerName">Server Name</Label>
+                    <Label htmlFor="username">Username</Label>
                     <Input
-                      id="jellyfinServerName"
+                      id="username"
                       type="text"
-                      placeholder="My Jellyfin Server"
-                      value={jellyfinServerName}
-                      onChange={(e) => { setJellyfinServerName(e.target.value); }}
+                      placeholder="Choose a username"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      required
+                      minLength={3}
+                      maxLength={50}
                     />
                   </div>
-                )}
-                <div className="space-y-2">
-                  <Label htmlFor="jellyfinUsername">Username</Label>
-                  <Input
-                    id="jellyfinUsername"
-                    type="text"
-                    placeholder="Admin username"
-                    value={jellyfinUsername}
-                    onChange={(e) => { setJellyfinUsername(e.target.value); }}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="jellyfinPassword">Password</Label>
-                  <Input
-                    id="jellyfinPassword"
-                    type="password"
-                    placeholder="Password"
-                    value={jellyfinPassword}
-                    onChange={(e) => { setJellyfinPassword(e.target.value); }}
-                    required
-                  />
-                </div>
-                {needsSetup && (
-                  <p className="text-xs text-muted-foreground">
-                    You must be a server administrator to connect.
-                  </p>
-                )}
-                <Button
-                  type="submit"
-                  className={`w-full ${JELLYFIN_COLOR} text-white`}
-                  disabled={jellyfinLoading}
-                >
-                  {jellyfinLoading ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Server className="mr-2 h-4 w-4" />
-                  )}
-                  {needsSetup ? 'Connect Jellyfin Server' : 'Sign in with Jellyfin'}
-                </Button>
-              </form>
-            </TabsContent>
-          </Tabs>
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email (optional)</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="your@email.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="password">Password</Label>
+                    <Input
+                      id="password"
+                      type="password"
+                      placeholder="At least 8 characters"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      minLength={8}
+                    />
+                  </div>
+                  <Button type="submit" className="w-full" disabled={localLoading}>
+                    {localLoading ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <User className="mr-2 h-4 w-4" />
+                    )}
+                    Create Account
+                  </Button>
+                </form>
+              ) : hasPasswordAuth ? (
+                <form onSubmit={handleLocalLogin} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="username">Username</Label>
+                    <Input
+                      id="username"
+                      type="text"
+                      placeholder="Your username"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="password">Password</Label>
+                    <Input
+                      id="password"
+                      type="password"
+                      placeholder="Your password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <Button type="submit" className="w-full" disabled={localLoading}>
+                    {localLoading ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <KeyRound className="mr-2 h-4 w-4" />
+                    )}
+                    Sign In
+                  </Button>
+                </form>
+              ) : null}
+
+            </>
+          )}
         </CardContent>
       </Card>
 
       <p className="mt-6 text-center text-xs text-muted-foreground">
         {needsSetup ? (
           <>
-            By connecting, you agree to let Tracearr monitor streaming activity
+            After creating your account, you'll add your
             <br />
-            on your media server.
+            Plex or Jellyfin servers from Settings.
           </>
         ) : (
           'Tracearr • Stream access management'
