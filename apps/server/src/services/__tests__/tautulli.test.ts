@@ -11,7 +11,7 @@
  * - Progress tracking
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 
 // ============================================================================
@@ -1153,7 +1153,7 @@ describe('Progress Tracking', () => {
 
   it('should track page progression', () => {
     let progress = createProgress();
-    const pageSize = 100;
+    // Simulating pagination through pages (page size would be 100 in real import)
 
     for (let page = 1; page <= 3; page++) {
       progress = updateProgress(progress, { currentPage: page });

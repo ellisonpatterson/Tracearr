@@ -5,7 +5,7 @@
  * Covers: token validation, privilege escalation, injection attacks.
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import {
   createTestApp,

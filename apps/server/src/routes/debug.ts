@@ -98,7 +98,7 @@ export const debugRoutes: FastifyPluginAsync = async (app) => {
   /**
    * DELETE /debug/users - Clear all non-owner users
    */
-  app.delete('/users', async (request) => {
+  app.delete('/users', async () => {
     // Delete sessions and violations for non-owner users first
     const nonOwnerUsers = await db
       .select({ id: users.id })
@@ -157,7 +157,7 @@ export const debugRoutes: FastifyPluginAsync = async (app) => {
    * POST /debug/reset - Full factory reset (keeps owner account)
    */
   app.post('/reset', async (request) => {
-    const currentUser = request.user!;
+    const currentUser = request.user;
 
     // Delete in order respecting FK constraints
     await db.delete(violations);
@@ -203,7 +203,7 @@ export const debugRoutes: FastifyPluginAsync = async (app) => {
         CALL refresh_continuous_aggregate('daily_stats', NULL, NULL)
       `);
       return { success: true, message: 'Aggregates refreshed' };
-    } catch (error) {
+    } catch {
       // Aggregates might not exist yet
       return { success: false, message: 'Aggregates not configured or refresh failed' };
     }
@@ -219,9 +219,9 @@ export const debugRoutes: FastifyPluginAsync = async (app) => {
       arch: process.arch,
       uptime: Math.round(process.uptime()),
       memoryUsage: {
-        heapUsed: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + ' MB',
-        heapTotal: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + ' MB',
-        rss: Math.round(process.memoryUsage().rss / 1024 / 1024) + ' MB',
+        heapUsed: `${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)} MB`,
+        heapTotal: `${Math.round(process.memoryUsage().heapTotal / 1024 / 1024)} MB`,
+        rss: `${Math.round(process.memoryUsage().rss / 1024 / 1024)} MB`,
       },
       env: {
         NODE_ENV: process.env.NODE_ENV ?? 'development',

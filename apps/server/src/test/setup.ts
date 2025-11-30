@@ -13,14 +13,18 @@ process.env.REDIS_URL = 'redis://localhost:6379';
 
 // Silence console.log in tests unless DEBUG=true
 if (!process.env.DEBUG) {
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
   vi.spyOn(console, 'log').mockImplementation(() => {});
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
   vi.spyOn(console, 'info').mockImplementation(() => {});
 }
 
 beforeAll(() => {
-  // Global test setup
+  // Global test setup placeholder
+  process.env.TEST_INITIALIZED = 'true';
 });
 
 afterAll(() => {
-  // Global test cleanup
+  // Global test cleanup placeholder
+  delete process.env.TEST_INITIALIZED;
 });

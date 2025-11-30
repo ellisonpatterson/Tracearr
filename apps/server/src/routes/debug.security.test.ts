@@ -7,7 +7,6 @@
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { sql } from 'drizzle-orm';
 import {
   createTestApp,
   generateTestToken,

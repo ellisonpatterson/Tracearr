@@ -172,76 +172,6 @@ function mapJellyfinSession(session: JellyfinSession): ProcessedSession {
 }
 
 /**
- * Find or create user for the session, updating user data if changed
- * This ensures user info (username, avatar) stays fresh from media server
- */
-async function findOrCreateUser(
-  serverId: string,
-  externalId: string,
-  username: string,
-  thumbUrl: string | null
-): Promise<string> {
-  const existingUser = await db
-    .select()
-    .from(users)
-    .where(and(eq(users.serverId, serverId), eq(users.externalId, externalId)))
-    .limit(1);
-
-  const existing = existingUser[0];
-  if (existing) {
-    // Update user data if it changed (keeps info fresh from media server)
-    const needsUpdate =
-      existing.username !== username ||
-      (thumbUrl && existing.thumbUrl !== thumbUrl);
-
-    if (needsUpdate) {
-      await db
-        .update(users)
-        .set({
-          username,
-          thumbUrl: thumbUrl ?? existing.thumbUrl, // Don't overwrite with empty
-          updatedAt: new Date(),
-        })
-        .where(eq(users.id, existing.id));
-    }
-    return existing.id;
-  }
-
-  // Create new user with full data
-  const newUser = await db
-    .insert(users)
-    .values({
-      serverId,
-      externalId,
-      username,
-      thumbUrl,
-    })
-    .returning();
-
-  const created = newUser[0];
-  if (!created) {
-    throw new Error('Failed to create user');
-  }
-  return created.id;
-}
-
-/**
- * Get recent sessions for a user for rule evaluation
- */
-async function getRecentUserSessions(userId: string, hours = 24): Promise<Session[]> {
-  const since = new Date(Date.now() - hours * 60 * 60 * 1000);
-
-  const recentSessions = await db
-    .select()
-    .from(sessions)
-    .where(and(eq(sessions.userId, userId), gte(sessions.startedAt, since)))
-    .orderBy(desc(sessions.startedAt))
-    .limit(100);
-
-  return mapSessionRows(recentSessions);
-}
-
-/**
  * Batch load recent sessions for multiple users (eliminates N+1 in polling loop)
  */
 async function batchGetRecentUserSessions(userIds: string[], hours = 24): Promise<Map<string, Session[]>> {
@@ -320,13 +250,6 @@ function mapSessionRow(s: typeof sessions.$inferSelect): Session {
     isTranscode: s.isTranscode,
     bitrate: s.bitrate,
   };
-}
-
-/**
- * Map multiple session rows to Session type
- */
-function mapSessionRows(rows: (typeof sessions.$inferSelect)[]): Session[] {
-  return rows.map(mapSessionRow);
 }
 
 /**
