@@ -81,7 +81,6 @@ const mapStyles = `
 
 interface StreamMapProps {
   locations: LocationStats[];
-  totalStreams: number;
   className?: string;
   isLoading?: boolean;
 }
@@ -114,7 +113,7 @@ function MapBoundsUpdater({ locations }: { locations: LocationStats[] }) {
   return null;
 }
 
-export function StreamMap({ locations, totalStreams, className, isLoading }: StreamMapProps) {
+export function StreamMap({ locations, className, isLoading }: StreamMapProps) {
   // Calculate max count for marker sizing
   const maxCount = useMemo(
     () => Math.max(...locations.map((l) => l.count), 1),

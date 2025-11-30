@@ -58,7 +58,6 @@ export function Map() {
   // Get selected filter labels for display
   const selectedUser = users.find(u => u.id === filters.userId);
   const selectedServer = servers.find(s => s.id === filters.serverId);
-  const selectedTimeRange = TIME_RANGES.find(t => t.value === String(filters.days));
   const selectedMediaType = MEDIA_TYPES.find(m => m.value === filters.mediaType);
 
   // Filter MEDIA_TYPES to only show available options
@@ -198,7 +197,6 @@ export function Map() {
       <div className="relative flex-1">
         <StreamMap
           locations={locations}
-          totalStreams={summary?.totalStreams ?? 0}
           isLoading={locationsLoading}
         />
       </div>
