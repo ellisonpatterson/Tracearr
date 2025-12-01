@@ -14,28 +14,92 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  # Wait for CI workflow to complete (if running)
-  wait-for-ci:
-    name: Wait for CI
+  # Run the same checks as CI
+  lint-and-typecheck:
+    name: Lint & Typecheck
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+
     steps:
-      - name: Wait for CI checks to pass
-        uses: lewagon/wait-on-check-action@v1.3.4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          ref: ${{ github.sha }}
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          # Wait for all CI check names (must match job names in ci.yml exactly)
-          check-name: 'Test (unit),Test (services),Test (routes),Test (security),Lint & Typecheck,Test Coverage,Build'
-          # Wait up to 15 minutes
-          wait-interval: 10
-          # If CI isn't running (e.g., no new commits), continue
-          allowed-conclusions: success,skipped
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Cache Turborepo
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ hashFiles('**/pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-${{ hashFiles('**/pnpm-lock.yaml') }}-
+            ${{ runner.os }}-turbo-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+  test:
+    name: Test (${{ matrix.group }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [unit, services, routes, security]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Cache Turborepo
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ hashFiles('**/pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-${{ hashFiles('**/pnpm-lock.yaml') }}-
+            ${{ runner.os }}-turbo-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run ${{ matrix.group }} tests
+        run: pnpm --filter @tracearr/server test:${{ matrix.group }}
 
   # Determine if this is a prerelease (alpha, beta, rc, etc.)
   check-release-type:
     name: Check Release Type
     runs-on: ubuntu-latest
-    needs: [wait-for-ci]
+    needs: [lint-and-typecheck, test]
     outputs:
       prerelease: ${{ steps.check.outputs.prerelease }}
 
