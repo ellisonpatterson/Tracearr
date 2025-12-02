@@ -28,8 +28,8 @@ describe('getTrustScorePenalty', () => {
 
 describe('doesRuleApplyToUser', () => {
   describe('global rules', () => {
-    it('should apply global rules (userId=null) to any user', () => {
-      const globalRule = { userId: null };
+    it('should apply global rules (serverUserId=null) to any user', () => {
+      const globalRule = { serverUserId: null };
       expect(doesRuleApplyToUser(globalRule, randomUUID())).toBe(true);
       expect(doesRuleApplyToUser(globalRule, randomUUID())).toBe(true);
     });
@@ -37,12 +37,12 @@ describe('doesRuleApplyToUser', () => {
 
   describe('user-specific rules', () => {
     it('should apply user-specific rule only to that user', () => {
-      const targetUserId = randomUUID();
-      const otherUserId = randomUUID();
-      const userRule = { userId: targetUserId };
+      const targetServerUserId = randomUUID();
+      const otherServerUserId = randomUUID();
+      const userRule = { serverUserId: targetServerUserId };
 
-      expect(doesRuleApplyToUser(userRule, targetUserId)).toBe(true);
-      expect(doesRuleApplyToUser(userRule, otherUserId)).toBe(false);
+      expect(doesRuleApplyToUser(userRule, targetServerUserId)).toBe(true);
+      expect(doesRuleApplyToUser(userRule, otherServerUserId)).toBe(false);
     });
   });
 });
