@@ -40,3 +40,16 @@ apps/server/data/
 
 # Docker
 docker-compose.override.yml
+
+# Expo
+.expo
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
+
+# Drizzle
+drizzle-kit
