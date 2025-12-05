@@ -31,13 +31,13 @@ export function Map() {
   // Parse filters from URL
   const filters = useMemo(() => {
     const days = searchParams.get('days');
-    const userId = searchParams.get('userId');
+    const serverUserId = searchParams.get('serverUserId');
     const serverId = searchParams.get('serverId');
     const mediaType = searchParams.get('mediaType') as 'movie' | 'episode' | 'track' | null;
 
     return {
       days: days ? Number(days) : 30,
-      userId: userId || undefined,
+      serverUserId: serverUserId || undefined,
       serverId: serverId || undefined,
       mediaType: mediaType || undefined,
     };
@@ -56,7 +56,7 @@ export function Map() {
   const mediaTypes = availableFilters?.mediaTypes ?? [];
 
   // Get selected filter labels for display
-  const selectedUser = users.find(u => u.id === filters.userId);
+  const selectedUser = users.find(u => u.id === filters.serverUserId);
   const selectedServer = servers.find(s => s.id === filters.serverId);
   const selectedMediaType = MEDIA_TYPES.find(m => m.value === filters.mediaType);
 
@@ -79,7 +79,7 @@ export function Map() {
     setSearchParams(new URLSearchParams());
   };
 
-  const hasFilters = filters.userId || filters.serverId || filters.mediaType || filters.days !== 30;
+  const hasFilters = filters.serverUserId || filters.serverId || filters.mediaType || filters.days !== 30;
 
   // Build summary text
   const summaryContext = useMemo(() => {
@@ -113,8 +113,8 @@ export function Map() {
 
         {/* User filter */}
         <Select
-          value={filters.userId ?? '_all'}
-          onValueChange={(v) => setFilter('userId', v === '_all' ? null : v)}
+          value={filters.serverUserId ?? '_all'}
+          onValueChange={(v) => setFilter('serverUserId', v === '_all' ? null : v)}
         >
           <SelectTrigger className="w-[140px] h-8 text-sm">
             <SelectValue placeholder="All users" />

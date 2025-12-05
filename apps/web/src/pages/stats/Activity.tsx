@@ -57,7 +57,7 @@ export function StatsActivity() {
             <CardTitle className="text-base font-medium">Plays Over Time</CardTitle>
           </CardHeader>
           <CardContent>
-            <PlaysChart data={plays.data} isLoading={plays.isLoading} height={250} />
+            <PlaysChart data={plays.data} isLoading={plays.isLoading} height={250} period={period} />
           </CardContent>
         </Card>
 
@@ -67,7 +67,7 @@ export function StatsActivity() {
             <CardTitle className="text-base font-medium">Concurrent Streams</CardTitle>
           </CardHeader>
           <CardContent>
-            <ConcurrentChart data={concurrent.data} isLoading={concurrent.isLoading} height={250} />
+            <ConcurrentChart data={concurrent.data} isLoading={concurrent.isLoading} height={250} period={period} />
           </CardContent>
         </Card>
 

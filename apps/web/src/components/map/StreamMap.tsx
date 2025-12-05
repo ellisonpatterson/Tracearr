@@ -93,10 +93,13 @@ function getMarkerRadius(count: number, maxCount: number): number {
 }
 
 // Component to fit bounds when data changes
-function MapBoundsUpdater({ locations }: { locations: LocationStats[] }) {
+function MapBoundsUpdater({ locations, isLoading }: { locations: LocationStats[]; isLoading?: boolean }) {
   const map = useMap();
 
   useEffect(() => {
+    // Don't update bounds while loading - prevents zoom reset during filter changes
+    if (isLoading) return;
+
     const points: [number, number][] = locations
       .filter((l) => l.lat && l.lon)
       .map((l) => [l.lat, l.lon]);
@@ -104,11 +107,9 @@ function MapBoundsUpdater({ locations }: { locations: LocationStats[] }) {
     if (points.length > 0) {
       const bounds = L.latLngBounds(points);
       map.fitBounds(bounds, { padding: [50, 50], maxZoom: 8 });
-    } else {
-      // Default view when no data
-      map.setView([20, 0], 2);
     }
-  }, [locations, map]);
+    // Note: Don't zoom out when no data - preserve current view during filter transitions
+  }, [locations, map, isLoading]);
 
   return null;
 }
@@ -138,7 +139,7 @@ export function StreamMap({ locations, className, isLoading }: StreamMapProps) {
         />
         <ZoomControl position="bottomright" />
 
-        <MapBoundsUpdater locations={locations} />
+        <MapBoundsUpdater locations={locations} isLoading={isLoading} />
 
         {/* Location markers */}
         {locations.map((location, idx) => {
