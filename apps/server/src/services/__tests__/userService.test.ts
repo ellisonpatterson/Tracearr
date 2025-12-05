@@ -14,6 +14,7 @@ vi.mock('../../db/client.js', () => ({
     select: vi.fn(),
     insert: vi.fn(),
     update: vi.fn(),
+    transaction: vi.fn(),
   },
 }));
 
@@ -495,25 +496,36 @@ describe('syncUserFromMediaServer', () => {
       username: mediaUser.username,
     });
 
-    // First: check for existing server user (returns empty)
+    // First: check for existing server user (returns empty) - before transaction
     const selectChain = {
       from: vi.fn().mockReturnThis(),
+      innerJoin: vi.fn().mockReturnThis(),
       where: vi.fn().mockReturnThis(),
       limit: vi.fn().mockResolvedValue([]),
     };
     vi.mocked(db.select).mockReturnValue(selectChain as never);
 
-    // Insert identity user
-    vi.mocked(db.insert)
-      .mockReturnValueOnce({
-        values: vi.fn().mockReturnThis(),
-        returning: vi.fn().mockResolvedValue([newUser]),
-      } as never)
-      // Insert server user
-      .mockReturnValueOnce({
-        values: vi.fn().mockReturnThis(),
-        returning: vi.fn().mockResolvedValue([newServerUser]),
-      } as never);
+    // Mock transaction - passes tx object to callback and returns result
+    vi.mocked(db.transaction).mockImplementation(async (callback) => {
+      // Create mock tx with select and insert methods
+      const tx = {
+        select: vi.fn().mockReturnValue({
+          from: vi.fn().mockReturnThis(),
+          where: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockResolvedValue([]), // No existing user by email
+        }),
+        insert: vi.fn()
+          .mockReturnValueOnce({
+            values: vi.fn().mockReturnThis(),
+            returning: vi.fn().mockResolvedValue([newUser]), // Create user
+          })
+          .mockReturnValueOnce({
+            values: vi.fn().mockReturnThis(),
+            returning: vi.fn().mockResolvedValue([newServerUser]), // Create server user
+          }),
+      };
+      return callback(tx as never);
+    });
 
     const result = await syncUserFromMediaServer(serverId, mediaUser);
 

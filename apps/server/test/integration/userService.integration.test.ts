@@ -2,16 +2,15 @@
  * User Service Integration Tests
  *
  * Tests userService functions against a real database.
- * Requires: docker compose -f docker/docker-compose.dev.yml up -d
+ * Uses global integration test setup for database management.
  *
  * Run with: pnpm test:integration
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
 import { db } from '../../src/db/client.js';
-import { servers, users, serverUsers } from '../../src/db/schema.js';
+import { servers } from '../../src/db/schema.js';
 import {
   batchSyncUsersFromMediaServer,
   syncUserFromMediaServer,
@@ -23,8 +22,8 @@ import type { MediaUser } from '../../src/services/userService.js';
 describe('userService integration tests', () => {
   let testServerId: string;
 
-  beforeAll(async () => {
-    // Create a test server for all tests in this suite
+  // Create a fresh server before each test (after global reset)
+  beforeEach(async () => {
     const [server] = await db
       .insert(servers)
       .values({
@@ -36,42 +35,6 @@ describe('userService integration tests', () => {
       .returning();
 
     testServerId = server.id;
-  });
-
-  afterAll(async () => {
-    // Clean up: delete test server and cascade to server_users
-    // First delete server_users, then users, then server
-    const serverUserRows = await db
-      .select({ id: serverUsers.id, userId: serverUsers.userId })
-      .from(serverUsers)
-      .where(eq(serverUsers.serverId, testServerId));
-
-    if (serverUserRows.length > 0) {
-      await db.delete(serverUsers).where(eq(serverUsers.serverId, testServerId));
-
-      // Delete orphaned identity users created for this test
-      for (const su of serverUserRows) {
-        await db.delete(users).where(eq(users.id, su.userId));
-      }
-    }
-
-    await db.delete(servers).where(eq(servers.id, testServerId));
-  });
-
-  beforeEach(async () => {
-    // Clean up any server_users from previous test
-    const serverUserRows = await db
-      .select({ id: serverUsers.id, userId: serverUsers.userId })
-      .from(serverUsers)
-      .where(eq(serverUsers.serverId, testServerId));
-
-    if (serverUserRows.length > 0) {
-      await db.delete(serverUsers).where(eq(serverUsers.serverId, testServerId));
-
-      for (const su of serverUserRows) {
-        await db.delete(users).where(eq(users.id, su.userId));
-      }
-    }
   });
 
   describe('syncUserFromMediaServer', () => {
