@@ -192,5 +192,14 @@ export const TIME_MS = {
 export const SESSION_LIMITS = {
   MAX_RECENT_PER_USER: 100,
   RESUME_WINDOW_HOURS: 24,
-  WATCH_COMPLETION_THRESHOLD: 0.8,
+  // Watch completion threshold - 85% is industry standard
+  WATCH_COMPLETION_THRESHOLD: 0.85,
+  // Stale session timeout - force stop after 5 minutes of no updates
+  STALE_SESSION_TIMEOUT_SECONDS: 300,
+  // Minimum play time to record session - filter short plays (2 minutes default)
+  MIN_PLAY_TIME_MS: 120 * 1000,
+  // Continued session threshold - max gap to consider a "resume" vs new watch
+  CONTINUED_SESSION_THRESHOLD_MS: 60 * 1000,
+  // Stale session sweep interval - how often to check for stale sessions (1 minute)
+  STALE_SWEEP_INTERVAL_MS: 60 * 1000,
 } as const;
