@@ -5,11 +5,13 @@ RUN corepack enable && corepack prepare pnpm@10.24.0 --activate
 
 WORKDIR /app
 
-# Copy package files
+# Copy ALL workspace package.json files for lockfile resolution
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/server/package.json ./apps/server/
 COPY apps/web/package.json ./apps/web/
+COPY apps/mobile/package.json ./apps/mobile/
 COPY packages/shared/package.json ./packages/shared/
+COPY packages/test-utils/package.json ./packages/test-utils/
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile
