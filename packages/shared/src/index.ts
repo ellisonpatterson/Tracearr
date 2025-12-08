@@ -120,6 +120,7 @@ export {
   violationQuerySchema,
   violationIdParamSchema,
   // Stats
+  serverIdFilterSchema,
   statsQuerySchema,
   locationStatsQuerySchema,
   // Settings
@@ -138,6 +139,7 @@ export type {
   CreateRuleInput,
   UpdateRuleInput,
   ViolationQueryInput,
+  ServerIdFilterInput,
   StatsQueryInput,
   LocationStatsQueryInput,
   UpdateSettingsInput,

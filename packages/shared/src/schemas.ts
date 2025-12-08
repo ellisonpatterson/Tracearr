@@ -116,6 +116,7 @@ export const ruleIdParamSchema = z.object({
 
 // Violation schemas
 export const violationQuerySchema = paginationSchema.extend({
+  serverId: uuidSchema.optional(),
   serverUserId: uuidSchema.optional(),
   ruleId: uuidSchema.optional(),
   severity: z.enum(['low', 'warning', 'high']).optional(),
@@ -129,6 +130,10 @@ export const violationIdParamSchema = z.object({
 });
 
 // Stats schemas
+export const serverIdFilterSchema = z.object({
+  serverId: uuidSchema.optional(),
+});
+
 export const statsQuerySchema = z.object({
   period: z.enum(['day', 'week', 'month', 'year']).default('week'),
   serverId: uuidSchema.optional(),
@@ -177,6 +182,7 @@ export type SessionQueryInput = z.infer<typeof sessionQuerySchema>;
 export type CreateRuleInput = z.infer<typeof createRuleSchema>;
 export type UpdateRuleInput = z.infer<typeof updateRuleSchema>;
 export type ViolationQueryInput = z.infer<typeof violationQuerySchema>;
+export type ServerIdFilterInput = z.infer<typeof serverIdFilterSchema>;
 export type StatsQueryInput = z.infer<typeof statsQuerySchema>;
 export type LocationStatsQueryInput = z.infer<typeof locationStatsQuerySchema>;
 export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;
