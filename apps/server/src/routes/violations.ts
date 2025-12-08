@@ -3,17 +3,21 @@
  */
 
 import type { FastifyPluginAsync } from 'fastify';
-import { eq, and, desc, gte, lte, isNull, isNotNull, sql } from 'drizzle-orm';
+import { eq, and, desc, gte, lte, isNull, isNotNull, sql, inArray } from 'drizzle-orm';
 import {
   violationQuerySchema,
   violationIdParamSchema,
 } from '@tracearr/shared';
 import { db } from '../db/client.js';
-import { violations, rules, serverUsers, sessions } from '../db/schema.js';
+import { violations, rules, serverUsers, sessions, servers } from '../db/schema.js';
+import { hasServerAccess } from '../utils/serverFiltering.js';
 
 export const violationRoutes: FastifyPluginAsync = async (app) => {
   /**
    * GET /violations - List violations with pagination and filters
+   *
+   * Violations are filtered by server access. Users only see violations
+   * from servers they have access to.
    */
   app.get(
     '/',
@@ -27,6 +31,7 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
       const {
         page = 1,
         pageSize = 50,
+        serverId,
         serverUserId,
         ruleId,
         severity,
@@ -38,8 +43,35 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
       const authUser = request.user;
       const offset = (page - 1) * pageSize;
 
+      // Validate server access if specific server requested
+      if (serverId && !hasServerAccess(authUser, serverId)) {
+        return reply.forbidden('You do not have access to this server');
+      }
+
       // Build conditions
       const conditions = [];
+
+      // Server filter - either specific server or user's accessible servers
+      if (serverId) {
+        // Specific server requested
+        conditions.push(eq(serverUsers.serverId, serverId));
+      } else if (authUser.role !== 'owner') {
+        // No specific server, filter by user's accessible servers
+        if (authUser.serverIds.length === 0) {
+          // No server access - return empty
+          return {
+            data: [],
+            page,
+            pageSize,
+            total: 0,
+            totalPages: 0,
+          };
+        } else if (authUser.serverIds.length === 1) {
+          conditions.push(eq(serverUsers.serverId, authUser.serverIds[0]!));
+        } else {
+          conditions.push(inArray(serverUsers.serverId, authUser.serverIds));
+        }
+      }
 
       if (serverUserId) {
         conditions.push(eq(violations.serverUserId, serverUserId));
@@ -67,7 +99,7 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
         conditions.push(lte(violations.createdAt, endDate));
       }
 
-      // Query violations with joins
+      // Query violations with joins, including server info
       const violationData = await db
         .select({
           id: violations.id,
@@ -77,6 +109,8 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
           serverUserId: violations.serverUserId,
           username: serverUsers.username,
           userThumb: serverUsers.thumbUrl,
+          serverId: serverUsers.serverId,
+          serverName: servers.name,
           sessionId: violations.sessionId,
           mediaTitle: sessions.mediaTitle,
           severity: violations.severity,
@@ -87,28 +121,70 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
         .from(violations)
         .innerJoin(rules, eq(violations.ruleId, rules.id))
         .innerJoin(serverUsers, eq(violations.serverUserId, serverUsers.id))
+        .innerJoin(servers, eq(serverUsers.serverId, servers.id))
         .innerJoin(sessions, eq(violations.sessionId, sessions.id))
         .where(conditions.length > 0 ? and(...conditions) : undefined)
         .orderBy(desc(violations.createdAt))
         .limit(pageSize)
         .offset(offset);
 
-      // Filter by user's accessible servers
-      const filteredViolations = violationData.filter(() => {
-        // For now, show all violations to owners
-        return authUser.role === 'owner';
-      });
+      // Get total count with same filters
+      // Need to use raw SQL for count with the same joins
+      const countConditions = [];
 
-      // Get total count
-      const countResult = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(violations)
-        .where(conditions.length > 0 ? and(...conditions) : undefined);
+      // Server filter for count query
+      if (serverId) {
+        countConditions.push(sql`su.server_id = ${serverId}`);
+      } else if (authUser.role !== 'owner') {
+        if (authUser.serverIds.length === 1) {
+          countConditions.push(sql`su.server_id = ${authUser.serverIds[0]}`);
+        } else if (authUser.serverIds.length > 1) {
+          const serverIdList = authUser.serverIds.map((id: string) => sql`${id}`);
+          countConditions.push(sql`su.server_id IN (${sql.join(serverIdList, sql`, `)})`);
+        }
+      }
 
-      const total = countResult[0]?.count ?? 0;
+      if (serverUserId) {
+        countConditions.push(sql`v.server_user_id = ${serverUserId}`);
+      }
+
+      if (ruleId) {
+        countConditions.push(sql`v.rule_id = ${ruleId}`);
+      }
+
+      if (severity) {
+        countConditions.push(sql`v.severity = ${severity}`);
+      }
+
+      if (acknowledged === true) {
+        countConditions.push(sql`v.acknowledged_at IS NOT NULL`);
+      } else if (acknowledged === false) {
+        countConditions.push(sql`v.acknowledged_at IS NULL`);
+      }
+
+      if (startDate) {
+        countConditions.push(sql`v.created_at >= ${startDate}`);
+      }
+
+      if (endDate) {
+        countConditions.push(sql`v.created_at <= ${endDate}`);
+      }
+
+      const whereClause = countConditions.length > 0
+        ? sql`WHERE ${sql.join(countConditions, sql` AND `)}`
+        : sql``;
+
+      const countResult = await db.execute(sql`
+        SELECT count(*)::int as count
+        FROM violations v
+        INNER JOIN server_users su ON su.id = v.server_user_id
+        ${whereClause}
+      `);
+
+      const total = (countResult.rows[0] as { count: number })?.count ?? 0;
 
       return {
-        data: filteredViolations,
+        data: violationData,
         page,
         pageSize,
         total,
@@ -130,12 +206,9 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const { id } = params.data;
+      const authUser = request.user;
 
-      // Query using manual JOINs for flat API response shape
-      // Manual JOINs are preferred here because:
-      // 1. API expects flat object (ruleName, username vs nested rule.name, user.name)
-      // 2. Includes fields from 3 related tables with custom selection
-      // See drizzle-orm-research-findings.md for relational vs manual JOIN guidance
+      // Query with server info for access check
       const violationRows = await db
         .select({
           id: violations.id,
@@ -145,6 +218,8 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
           serverUserId: violations.serverUserId,
           username: serverUsers.username,
           userThumb: serverUsers.thumbUrl,
+          serverId: serverUsers.serverId,
+          serverName: servers.name,
           sessionId: violations.sessionId,
           mediaTitle: sessions.mediaTitle,
           ipAddress: sessions.ipAddress,
@@ -160,6 +235,7 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
         .from(violations)
         .innerJoin(rules, eq(violations.ruleId, rules.id))
         .innerJoin(serverUsers, eq(violations.serverUserId, serverUsers.id))
+        .innerJoin(servers, eq(serverUsers.serverId, servers.id))
         .innerJoin(sessions, eq(violations.sessionId, sessions.id))
         .where(eq(violations.id, id))
         .limit(1);
@@ -167,6 +243,11 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
       const violation = violationRows[0];
       if (!violation) {
         return reply.notFound('Violation not found');
+      }
+
+      // Check server access
+      if (!hasServerAccess(authUser, violation.serverId)) {
+        return reply.forbidden('You do not have access to this violation');
       }
 
       return violation;
@@ -193,15 +274,25 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
         return reply.forbidden('Only server owners can acknowledge violations');
       }
 
-      // Check violation exists
+      // Check violation exists and get server info for access check
       const violationRows = await db
-        .select()
+        .select({
+          id: violations.id,
+          serverId: serverUsers.serverId,
+        })
         .from(violations)
+        .innerJoin(serverUsers, eq(violations.serverUserId, serverUsers.id))
         .where(eq(violations.id, id))
         .limit(1);
 
-      if (violationRows.length === 0) {
+      const violation = violationRows[0];
+      if (!violation) {
         return reply.notFound('Violation not found');
+      }
+
+      // Check server access
+      if (!hasServerAccess(authUser, violation.serverId)) {
+        return reply.forbidden('You do not have access to this violation');
       }
 
       // Update acknowledgment
@@ -248,15 +339,25 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
         return reply.forbidden('Only server owners can dismiss violations');
       }
 
-      // Check violation exists
+      // Check violation exists and get server info for access check
       const violationRows = await db
-        .select()
+        .select({
+          id: violations.id,
+          serverId: serverUsers.serverId,
+        })
         .from(violations)
+        .innerJoin(serverUsers, eq(violations.serverUserId, serverUsers.id))
         .where(eq(violations.id, id))
         .limit(1);
 
-      if (violationRows.length === 0) {
+      const violation = violationRows[0];
+      if (!violation) {
         return reply.notFound('Violation not found');
+      }
+
+      // Check server access
+      if (!hasServerAccess(authUser, violation.serverId)) {
+        return reply.forbidden('You do not have access to this violation');
       }
 
       // Delete violation

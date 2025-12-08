@@ -10,16 +10,21 @@
  */
 
 import type { FastifyPluginAsync } from 'fastify';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, sql, inArray } from 'drizzle-orm';
 import {
   updateUserSchema,
   userIdParamSchema,
   paginationSchema,
+  serverIdFilterSchema,
 } from '@tracearr/shared';
 import { db } from '../../db/client.js';
 import { serverUsers, sessions, servers, users } from '../../db/schema.js';
+import { hasServerAccess } from '../../utils/serverFiltering.js';
 
 export const listRoutes: FastifyPluginAsync = async (app) => {
+  // Combined schema for pagination and server filter
+  const userListQuerySchema = paginationSchema.merge(serverIdFilterSchema);
+
   /**
    * GET / - List all server users with pagination
    */
@@ -27,19 +32,42 @@ export const listRoutes: FastifyPluginAsync = async (app) => {
     '/',
     { preHandler: [app.authenticate] },
     async (request, reply) => {
-      const query = paginationSchema.safeParse(request.query);
+      const query = userListQuerySchema.safeParse(request.query);
       if (!query.success) {
         return reply.badRequest('Invalid query parameters');
       }
 
-      const { page = 1, pageSize = 50 } = query.data;
+      const { page = 1, pageSize = 50, serverId } = query.data;
       const authUser = request.user;
       const offset = (page - 1) * pageSize;
 
-      // Get server users from servers the authenticated user has access to
+      // If specific server requested, validate access
+      if (serverId && !hasServerAccess(authUser, serverId)) {
+        return reply.forbidden('You do not have access to this server');
+      }
+
+      // Build conditions for filtering
       const conditions = [];
-      if (authUser.serverIds.length > 0) {
-        conditions.push(eq(serverUsers.serverId, authUser.serverIds[0] as string));
+
+      // If specific server requested, filter to that server
+      if (serverId) {
+        conditions.push(eq(serverUsers.serverId, serverId));
+      } else if (authUser.role !== 'owner') {
+        // No specific server - filter by user's accessible servers (non-owners only)
+        if (authUser.serverIds.length === 0) {
+          // No server access - return empty result
+          return {
+            data: [],
+            page,
+            pageSize,
+            total: 0,
+            totalPages: 0,
+          };
+        } else if (authUser.serverIds.length === 1) {
+          conditions.push(eq(serverUsers.serverId, authUser.serverIds[0]!));
+        } else {
+          conditions.push(inArray(serverUsers.serverId, authUser.serverIds));
+        }
       }
 
       const serverUserList = await db
@@ -132,8 +160,8 @@ export const listRoutes: FastifyPluginAsync = async (app) => {
         return reply.notFound('User not found');
       }
 
-      // Verify access
-      if (!authUser.serverIds.includes(serverUser.serverId)) {
+      // Verify access (owners can see all servers)
+      if (!hasServerAccess(authUser, serverUser.serverId)) {
         return reply.forbidden('You do not have access to this user');
       }
 
@@ -195,8 +223,8 @@ export const listRoutes: FastifyPluginAsync = async (app) => {
         return reply.notFound('User not found');
       }
 
-      // Verify access
-      if (!authUser.serverIds.includes(serverUser.serverId)) {
+      // Verify access (owners can see all servers)
+      if (!hasServerAccess(authUser, serverUser.serverId)) {
         return reply.forbidden('You do not have access to this user');
       }
 

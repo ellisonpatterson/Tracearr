@@ -10,6 +10,30 @@ import { sql } from 'drizzle-orm';
 import { statsQuerySchema } from '@tracearr/shared';
 import { db } from '../../db/client.js';
 import { getDateRange } from './utils.js';
+import { validateServerAccess } from '../../utils/serverFiltering.js';
+
+/**
+ * Build SQL server filter fragment for raw queries
+ */
+function buildServerFilterSql(
+  serverId: string | undefined,
+  authUser: { role: string; serverIds: string[] }
+): ReturnType<typeof sql> {
+  if (serverId) {
+    return sql`AND server_id = ${serverId}`;
+  }
+  if (authUser.role !== 'owner') {
+    if (authUser.serverIds.length === 0) {
+      return sql`AND false`;
+    } else if (authUser.serverIds.length === 1) {
+      return sql`AND server_id = ${authUser.serverIds[0]}`;
+    } else {
+      const serverIdList = authUser.serverIds.map(id => sql`${id}`);
+      return sql`AND server_id IN (${sql.join(serverIdList, sql`, `)})`;
+    }
+  }
+  return sql``;
+}
 
 export const contentRoutes: FastifyPluginAsync = async (app) => {
   /**
@@ -28,8 +52,19 @@ export const contentRoutes: FastifyPluginAsync = async (app) => {
         return reply.badRequest('Invalid query parameters');
       }
 
-      const { period } = query.data;
+      const { period, serverId } = query.data;
+      const authUser = request.user;
       const startDate = getDateRange(period);
+
+      // Validate server access if specific server requested
+      if (serverId) {
+        const error = validateServerAccess(authUser, serverId);
+        if (error) {
+          return reply.forbidden(error);
+        }
+      }
+
+      const serverFilter = buildServerFilterSql(serverId, authUser);
 
       // Run both queries in parallel for better performance
       const [moviesResult, showsResult] = await Promise.all([
@@ -45,6 +80,7 @@ export const contentRoutes: FastifyPluginAsync = async (app) => {
             MAX(rating_key) as rating_key
           FROM sessions
           WHERE started_at >= ${startDate} AND media_type = 'movie'
+          ${serverFilter}
           GROUP BY media_title, year
           ORDER BY play_count DESC
           LIMIT 10
@@ -62,6 +98,7 @@ export const contentRoutes: FastifyPluginAsync = async (app) => {
             MAX(rating_key) as rating_key
           FROM sessions
           WHERE started_at >= ${startDate} AND media_type = 'episode' AND grandparent_title IS NOT NULL
+          ${serverFilter}
           GROUP BY grandparent_title
           ORDER BY play_count DESC
           LIMIT 10

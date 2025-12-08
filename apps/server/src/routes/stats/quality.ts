@@ -12,18 +12,35 @@ import { sql } from 'drizzle-orm';
 import { statsQuerySchema } from '@tracearr/shared';
 import { db } from '../../db/client.js';
 import '../../db/schema.js';
-import {
-  playsByPlatformSince,
-  qualityStatsSince,
-  watchTimeSince,
-  watchTimeByTypeSince,
-} from '../../db/prepared.js';
 import { getDateRange } from './utils.js';
+import { validateServerAccess } from '../../utils/serverFiltering.js';
+
+/**
+ * Build SQL server filter fragment for raw queries
+ */
+function buildServerFilterSql(
+  serverId: string | undefined,
+  authUser: { role: string; serverIds: string[] }
+): ReturnType<typeof sql> {
+  if (serverId) {
+    return sql`AND server_id = ${serverId}`;
+  }
+  if (authUser.role !== 'owner') {
+    if (authUser.serverIds.length === 0) {
+      return sql`AND false`;
+    } else if (authUser.serverIds.length === 1) {
+      return sql`AND server_id = ${authUser.serverIds[0]}`;
+    } else {
+      const serverIdList = authUser.serverIds.map(id => sql`${id}`);
+      return sql`AND server_id IN (${sql.join(serverIdList, sql`, `)})`;
+    }
+  }
+  return sql``;
+}
 
 export const qualityRoutes: FastifyPluginAsync = async (app) => {
   /**
    * GET /quality - Transcode vs direct play breakdown
-   * Uses prepared statement for 10-30% query plan reuse speedup
    */
   app.get(
     '/quality',
@@ -34,14 +51,34 @@ export const qualityRoutes: FastifyPluginAsync = async (app) => {
         return reply.badRequest('Invalid query parameters');
       }
 
-      const { period } = query.data;
+      const { period, serverId } = query.data;
+      const authUser = request.user;
       const startDate = getDateRange(period);
 
-      // Use prepared statement for better performance
-      const qualityStats = await qualityStatsSince.execute({ since: startDate });
+      // Validate server access if specific server requested
+      if (serverId) {
+        const error = validateServerAccess(authUser, serverId);
+        if (error) {
+          return reply.forbidden(error);
+        }
+      }
 
-      const directPlay = qualityStats.find((q) => !q.isTranscode)?.count ?? 0;
-      const transcode = qualityStats.find((q) => q.isTranscode)?.count ?? 0;
+      const serverFilter = buildServerFilterSql(serverId, authUser);
+
+      const result = await db.execute(sql`
+        SELECT
+          is_transcode,
+          COUNT(DISTINCT COALESCE(reference_id, id))::int as count
+        FROM sessions
+        WHERE started_at >= ${startDate}
+        ${serverFilter}
+        GROUP BY is_transcode
+      `);
+
+      const qualityStats = result.rows as { is_transcode: boolean | null; count: number }[];
+
+      const directPlay = qualityStats.find((q) => !q.is_transcode)?.count ?? 0;
+      const transcode = qualityStats.find((q) => q.is_transcode)?.count ?? 0;
       const total = directPlay + transcode;
 
       return {
@@ -56,7 +93,6 @@ export const qualityRoutes: FastifyPluginAsync = async (app) => {
 
   /**
    * GET /platforms - Plays by platform
-   * Uses prepared statement for 10-30% query plan reuse speedup
    */
   app.get(
     '/platforms',
@@ -67,19 +103,37 @@ export const qualityRoutes: FastifyPluginAsync = async (app) => {
         return reply.badRequest('Invalid query parameters');
       }
 
-      const { period } = query.data;
+      const { period, serverId } = query.data;
+      const authUser = request.user;
       const startDate = getDateRange(period);
 
-      // Use prepared statement for better performance
-      const platformStats = await playsByPlatformSince.execute({ since: startDate });
+      // Validate server access if specific server requested
+      if (serverId) {
+        const error = validateServerAccess(authUser, serverId);
+        if (error) {
+          return reply.forbidden(error);
+        }
+      }
 
-      return { data: platformStats };
+      const serverFilter = buildServerFilterSql(serverId, authUser);
+
+      const result = await db.execute(sql`
+        SELECT
+          platform,
+          COUNT(DISTINCT COALESCE(reference_id, id))::int as count
+        FROM sessions
+        WHERE started_at >= ${startDate}
+        ${serverFilter}
+        GROUP BY platform
+        ORDER BY count DESC
+      `);
+
+      return { data: result.rows as { platform: string | null; count: number }[] };
     }
   );
 
   /**
    * GET /watch-time - Total watch time breakdown
-   * Uses prepared statements for 10-30% query plan reuse speedup
    */
   app.get(
     '/watch-time',
@@ -90,20 +144,46 @@ export const qualityRoutes: FastifyPluginAsync = async (app) => {
         return reply.badRequest('Invalid query parameters');
       }
 
-      const { period } = query.data;
+      const { period, serverId } = query.data;
+      const authUser = request.user;
       const startDate = getDateRange(period);
 
-      // Use prepared statements for better performance
+      // Validate server access if specific server requested
+      if (serverId) {
+        const error = validateServerAccess(authUser, serverId);
+        if (error) {
+          return reply.forbidden(error);
+        }
+      }
+
+      const serverFilter = buildServerFilterSql(serverId, authUser);
+
       const [totalResult, byTypeResult] = await Promise.all([
-        watchTimeSince.execute({ since: startDate }),
-        watchTimeByTypeSince.execute({ since: startDate }),
+        db.execute(sql`
+          SELECT COALESCE(SUM(duration_ms), 0)::bigint as total_ms
+          FROM sessions
+          WHERE started_at >= ${startDate}
+          ${serverFilter}
+        `),
+        db.execute(sql`
+          SELECT
+            media_type,
+            COALESCE(SUM(duration_ms), 0)::bigint as total_ms
+          FROM sessions
+          WHERE started_at >= ${startDate}
+          ${serverFilter}
+          GROUP BY media_type
+        `),
       ]);
 
+      const totalMs = (totalResult.rows[0] as { total_ms: string })?.total_ms ?? '0';
+      const byType = (byTypeResult.rows as { media_type: string | null; total_ms: string }[]);
+
       return {
-        totalHours: Math.round((Number(totalResult[0]?.totalMs ?? 0) / (1000 * 60 * 60)) * 10) / 10,
-        byType: byTypeResult.map((t) => ({
-          mediaType: t.mediaType,
-          hours: Math.round((Number(t.totalMs) / (1000 * 60 * 60)) * 10) / 10,
+        totalHours: Math.round((Number(totalMs) / (1000 * 60 * 60)) * 10) / 10,
+        byType: byType.map((t) => ({
+          mediaType: t.media_type,
+          hours: Math.round((Number(t.total_ms) / (1000 * 60 * 60)) * 10) / 10,
         })),
       };
     }
@@ -130,8 +210,19 @@ export const qualityRoutes: FastifyPluginAsync = async (app) => {
         return reply.badRequest('Invalid query parameters');
       }
 
-      const { period } = query.data;
+      const { period, serverId } = query.data;
+      const authUser = request.user;
       const startDate = getDateRange(period);
+
+      // Validate server access if specific server requested
+      if (serverId) {
+        const error = validateServerAccess(authUser, serverId);
+        if (error) {
+          return reply.forbidden(error);
+        }
+      }
+
+      const serverFilter = buildServerFilterSql(serverId, authUser);
 
       // Event-based calculation with proper boundary handling
       // Uses TimescaleDB-optimized time-based filtering on hypertable
@@ -147,6 +238,7 @@ export const qualityRoutes: FastifyPluginAsync = async (app) => {
           FROM sessions
           WHERE started_at < ${startDate}
             AND (stopped_at IS NULL OR stopped_at >= ${startDate})
+            ${serverFilter}
 
           UNION ALL
 
@@ -158,6 +250,7 @@ export const qualityRoutes: FastifyPluginAsync = async (app) => {
             CASE WHEN is_transcode THEN 1 ELSE 0 END AS transcode_delta
           FROM sessions
           WHERE started_at >= ${startDate}
+            ${serverFilter}
 
           UNION ALL
 
@@ -170,6 +263,7 @@ export const qualityRoutes: FastifyPluginAsync = async (app) => {
           FROM sessions
           WHERE stopped_at IS NOT NULL
             AND stopped_at >= ${startDate}
+            ${serverFilter}
         ),
         running_counts AS (
           -- Running sum gives concurrent count at each event point

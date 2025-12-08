@@ -10,11 +10,16 @@ import {
   ruleIdParamSchema,
 } from '@tracearr/shared';
 import { db } from '../db/client.js';
-import { rules, serverUsers, violations } from '../db/schema.js';
+import { rules, serverUsers, violations, servers } from '../db/schema.js';
+import { hasServerAccess } from '../utils/serverFiltering.js';
 
 export const ruleRoutes: FastifyPluginAsync = async (app) => {
   /**
    * GET /rules - List all rules
+   *
+   * Rules can be:
+   * - Global (serverUserId = null) - applies to all servers, visible to all
+   * - User-specific (serverUserId set) - only visible if user has access to that server
    */
   app.get(
     '/',
@@ -22,7 +27,7 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
     async (request) => {
       const authUser = request.user;
 
-      // Get all rules, optionally with server user information
+      // Get all rules with server user and server information
       const ruleList = await db
         .select({
           id: rules.id,
@@ -31,21 +36,26 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
           params: rules.params,
           serverUserId: rules.serverUserId,
           username: serverUsers.username,
+          serverId: serverUsers.serverId,
+          serverName: servers.name,
           isActive: rules.isActive,
           createdAt: rules.createdAt,
           updatedAt: rules.updatedAt,
         })
         .from(rules)
         .leftJoin(serverUsers, eq(rules.serverUserId, serverUsers.id))
+        .leftJoin(servers, eq(serverUsers.serverId, servers.id))
         .orderBy(rules.name);
 
-      // Filter out rules for users not in the accessible servers
-      // Global rules (serverUserId = null) are always visible
+      // Filter rules by server access
+      // Global rules (serverUserId = null) are visible to all
+      // User-specific rules require server access
       const filteredRules = ruleList.filter((rule) => {
-        if (!rule.serverUserId) return true; // Global rule
-        // For user-specific rules, we'd need to join through servers
-        // For now, return all rules for owners
-        return authUser.role === 'owner';
+        // Global rule - visible to everyone
+        if (!rule.serverUserId) return true;
+        // User-specific rule - check server access
+        if (!rule.serverId) return false; // Shouldn't happen, but defensive
+        return hasServerAccess(authUser, rule.serverId);
       });
 
       return { data: filteredRules };
@@ -73,16 +83,25 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
 
       const { name, type, params, serverUserId, isActive } = body.data;
 
-      // Verify serverUserId exists if provided
+      // Verify serverUserId exists and user has access if provided
       if (serverUserId) {
         const serverUserRows = await db
-          .select()
+          .select({
+            id: serverUsers.id,
+            serverId: serverUsers.serverId,
+          })
           .from(serverUsers)
           .where(eq(serverUsers.id, serverUserId))
           .limit(1);
 
-        if (serverUserRows.length === 0) {
+        const serverUser = serverUserRows[0];
+        if (!serverUser) {
           return reply.notFound('Server user not found');
+        }
+
+        // Verify owner has access to this server
+        if (!hasServerAccess(authUser, serverUser.serverId)) {
+          return reply.forbidden('You do not have access to this server');
         }
       }
 
@@ -120,6 +139,7 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const { id } = params.data;
+      const authUser = request.user;
 
       const ruleRows = await db
         .select({
@@ -129,18 +149,26 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
           params: rules.params,
           serverUserId: rules.serverUserId,
           username: serverUsers.username,
+          serverId: serverUsers.serverId,
+          serverName: servers.name,
           isActive: rules.isActive,
           createdAt: rules.createdAt,
           updatedAt: rules.updatedAt,
         })
         .from(rules)
         .leftJoin(serverUsers, eq(rules.serverUserId, serverUsers.id))
+        .leftJoin(servers, eq(serverUsers.serverId, servers.id))
         .where(eq(rules.id, id))
         .limit(1);
 
       const rule = ruleRows[0];
       if (!rule) {
         return reply.notFound('Rule not found');
+      }
+
+      // Check access for user-specific rules
+      if (rule.serverUserId && rule.serverId && !hasServerAccess(authUser, rule.serverId)) {
+        return reply.forbidden('You do not have access to this rule');
       }
 
       // Get violation count for this rule
@@ -181,15 +209,26 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
         return reply.forbidden('Only server owners can update rules');
       }
 
-      // Check rule exists
+      // Check rule exists and get server info
       const ruleRows = await db
-        .select()
+        .select({
+          id: rules.id,
+          serverUserId: rules.serverUserId,
+          serverId: serverUsers.serverId,
+        })
         .from(rules)
+        .leftJoin(serverUsers, eq(rules.serverUserId, serverUsers.id))
         .where(eq(rules.id, id))
         .limit(1);
 
-      if (ruleRows.length === 0) {
+      const existingRule = ruleRows[0];
+      if (!existingRule) {
         return reply.notFound('Rule not found');
+      }
+
+      // Check access for user-specific rules
+      if (existingRule.serverUserId && existingRule.serverId && !hasServerAccess(authUser, existingRule.serverId)) {
+        return reply.forbidden('You do not have access to this rule');
       }
 
       // Build update object
@@ -250,15 +289,26 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
         return reply.forbidden('Only server owners can delete rules');
       }
 
-      // Check rule exists
+      // Check rule exists and get server info
       const ruleRows = await db
-        .select()
+        .select({
+          id: rules.id,
+          serverUserId: rules.serverUserId,
+          serverId: serverUsers.serverId,
+        })
         .from(rules)
+        .leftJoin(serverUsers, eq(rules.serverUserId, serverUsers.id))
         .where(eq(rules.id, id))
         .limit(1);
 
-      if (ruleRows.length === 0) {
+      const existingRule = ruleRows[0];
+      if (!existingRule) {
         return reply.notFound('Rule not found');
+      }
+
+      // Check access for user-specific rules
+      if (existingRule.serverUserId && existingRule.serverId && !hasServerAccess(authUser, existingRule.serverId)) {
+        return reply.forbidden('You do not have access to this rule');
       }
 
       // Delete rule (cascade will handle violations)

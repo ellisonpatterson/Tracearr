@@ -11,11 +11,13 @@ import { eq, sql } from 'drizzle-orm';
 import {
   sessionQuerySchema,
   sessionIdParamSchema,
+  serverIdFilterSchema,
   REDIS_KEYS,
   type ActiveSession,
 } from '@tracearr/shared';
 import { db } from '../db/client.js';
 import { sessions, serverUsers, servers } from '../db/schema.js';
+import { filterByServerAccess, hasServerAccess } from '../utils/serverFiltering.js';
 
 export const sessionRoutes: FastifyPluginAsync = async (app) => {
   /**
@@ -56,9 +58,24 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
       // which isn't expressible in Drizzle's query builder.
       const conditions: ReturnType<typeof sql>[] = [];
 
-      // Filter by user's accessible servers
-      if (authUser.serverIds.length > 0) {
-        conditions.push(sql`s.server_id = ${authUser.serverIds[0]}`);
+      // Filter by user's accessible servers (owners see all)
+      if (authUser.role !== 'owner') {
+        if (authUser.serverIds.length === 0) {
+          // No server access - return empty result
+          return {
+            data: [],
+            page,
+            pageSize,
+            total: 0,
+            totalPages: 0,
+          };
+        } else if (authUser.serverIds.length === 1) {
+          conditions.push(sql`s.server_id = ${authUser.serverIds[0]}`);
+        } else {
+          // Multiple servers - use IN clause
+          const serverIdList = authUser.serverIds.map((id: string) => sql`${id}`);
+          conditions.push(sql`s.server_id IN (${sql.join(serverIdList, sql`, `)})`);
+        }
       }
 
       if (serverUserId) {
@@ -261,8 +278,17 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
   app.get(
     '/active',
     { preHandler: [app.authenticate] },
-    async (request) => {
+    async (request, reply) => {
       const authUser = request.user;
+
+      // Parse optional serverId filter
+      const query = serverIdFilterSchema.safeParse(request.query);
+      const serverId = query.success ? query.data.serverId : undefined;
+
+      // If specific server requested, validate access
+      if (serverId && !hasServerAccess(authUser, serverId)) {
+        return reply.forbidden('You do not have access to this server');
+      }
 
       // Get active sessions from Redis cache
       const cached = await app.redis.get(REDIS_KEYS.ACTIVE_SESSIONS);
@@ -278,11 +304,12 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
         return { data: [] };
       }
 
-      // Filter by user's accessible servers
-      if (authUser.serverIds.length > 0) {
-        activeSessions = activeSessions.filter((session) =>
-          authUser.serverIds.includes(session.serverId)
-        );
+      // Filter by specific server if requested
+      if (serverId) {
+        activeSessions = activeSessions.filter((s) => s.serverId === serverId);
+      } else {
+        // Otherwise filter by user's accessible servers (owners see all)
+        activeSessions = filterByServerAccess(activeSessions, authUser);
       }
 
       return { data: activeSessions };
@@ -309,8 +336,8 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
       if (cached) {
         try {
           const activeSession = JSON.parse(cached) as ActiveSession;
-          // Verify access
-          if (authUser.serverIds.includes(activeSession.serverId)) {
+          // Verify access (owners can see all servers)
+          if (hasServerAccess(authUser, activeSession.serverId)) {
             // Transform ActiveSession to SessionWithDetails format for consistent API response
             // ActiveSession has nested user/server objects, but clients expect flat structure
             const { user, server, ...sessionFields } = activeSession;
@@ -388,8 +415,8 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
         return reply.notFound('Session not found');
       }
 
-      // Verify access
-      if (!authUser.serverIds.includes(session.serverId)) {
+      // Verify access (owners can see all servers)
+      if (!hasServerAccess(authUser, session.serverId)) {
         return reply.forbidden('You do not have access to this session');
       }
 
