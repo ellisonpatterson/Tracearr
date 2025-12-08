@@ -287,7 +287,72 @@ async function processServerSessions(
       if (isNew) {
         // Check for session grouping - find recent unfinished session with same serverUser+ratingKey
         let referenceId: string | null = null;
+
+        // FIRST: Check if there's an ACTIVE session for the same user+content
+        // This handles quality changes mid-stream where Plex assigns a new sessionKey
         if (processed.ratingKey) {
+          const activeSameContent = await db
+            .select()
+            .from(sessions)
+            .where(
+              and(
+                eq(sessions.serverUserId, serverUserId),
+                eq(sessions.ratingKey, processed.ratingKey),
+                isNull(sessions.stoppedAt) // Still active
+              )
+            )
+            .orderBy(desc(sessions.startedAt))
+            .limit(1);
+
+          const existingActiveSession = activeSameContent[0];
+          if (existingActiveSession) {
+            // This is a quality/resolution change during playback
+            // Stop the old session and link the new one
+            const now = new Date();
+            const { durationMs, finalPausedDurationMs } = calculateStopDuration(
+              {
+                startedAt: existingActiveSession.startedAt,
+                lastPausedAt: existingActiveSession.lastPausedAt,
+                pausedDurationMs: existingActiveSession.pausedDurationMs || 0,
+              },
+              now
+            );
+
+            await db
+              .update(sessions)
+              .set({
+                state: 'stopped',
+                stoppedAt: now,
+                durationMs,
+                pausedDurationMs: finalPausedDurationMs,
+                lastPausedAt: null,
+                // Keep watched=false since playback is continuing
+              })
+              .where(eq(sessions.id, existingActiveSession.id));
+
+            // Remove from cache
+            if (cacheService) {
+              await cacheService.deleteSessionById(existingActiveSession.id);
+              await cacheService.removeUserSession(existingActiveSession.serverUserId, existingActiveSession.id);
+            }
+
+            // Publish stop event for the old session
+            if (pubSubService) {
+              await pubSubService.publish('session:stopped', existingActiveSession.id);
+            }
+
+            // Remove from cached session keys to prevent "stale" detection for this server
+            cachedSessionKeys.delete(`${server.id}:${existingActiveSession.sessionKey}`);
+
+            // Link to the original session chain
+            referenceId = existingActiveSession.referenceId || existingActiveSession.id;
+
+            console.log(`[Poller] Quality change detected for user ${serverUserId}, content ${processed.ratingKey}. Old session ${existingActiveSession.id} stopped, linking new session.`);
+          }
+        }
+
+        // SECOND: Check for recently stopped sessions (resume tracking)
+        if (!referenceId && processed.ratingKey) {
           const oneDayAgo = new Date(Date.now() - TIME_MS.DAY);
           const recentSameContent = await db
             .select()
