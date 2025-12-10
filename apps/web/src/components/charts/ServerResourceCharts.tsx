@@ -95,7 +95,8 @@ function ResourceChart({
         style: {
           fontFamily: 'inherit',
         },
-        spacing: [10, 20, 15, 10],
+        spacing: [10, 10, 15, 10],
+        reflow: true,
       },
       title: {
         text: undefined,
@@ -219,6 +220,32 @@ function ResourceChart({
           },
         },
       ],
+      responsive: {
+        rules: [
+          {
+            condition: {
+              maxWidth: 400,
+            },
+            chartOptions: {
+              legend: {
+                align: 'center',
+                layout: 'horizontal',
+                itemStyle: {
+                  fontSize: '10px',
+                },
+              },
+              xAxis: {
+                tickInterval: 40,
+                labels: {
+                  style: {
+                    fontSize: '9px',
+                  },
+                },
+              },
+            },
+          },
+        ],
+      },
     };
   }, [data, processKey, hostKey]);
 
@@ -270,7 +297,11 @@ function ResourceChart({
         </CardTitle>
       </CardHeader>
       <CardContent className="pb-2">
-        <HighchartsReact highcharts={Highcharts} options={chartOptions} />
+        <HighchartsReact
+          highcharts={Highcharts}
+          options={chartOptions}
+          containerProps={{ style: { width: '100%', height: '100%' } }}
+        />
         {/* Averages row */}
         <div className="flex justify-end gap-4 text-xs text-muted-foreground mt-1 pr-2">
           <span>

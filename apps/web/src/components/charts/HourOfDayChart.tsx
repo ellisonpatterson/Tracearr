@@ -35,6 +35,7 @@ export function HourOfDayChart({ data, isLoading, height = 250 }: HourOfDayChart
         style: {
           fontFamily: 'inherit',
         },
+        reflow: true,
       },
       title: {
         text: undefined,
@@ -99,6 +100,25 @@ export function HourOfDayChart({ data, isLoading, height = 250 }: HourOfDayChart
           data: data.map((d) => d.count),
         },
       ],
+      responsive: {
+        rules: [
+          {
+            condition: {
+              maxWidth: 400,
+            },
+            chartOptions: {
+              xAxis: {
+                labels: {
+                  style: {
+                    fontSize: '8px',
+                  },
+                  rotation: -60,
+                },
+              },
+            },
+          },
+        ],
+      },
     };
   }, [data, height]);
 
@@ -117,5 +137,11 @@ export function HourOfDayChart({ data, isLoading, height = 250 }: HourOfDayChart
     );
   }
 
-  return <HighchartsReact highcharts={Highcharts} options={options} />;
+  return (
+    <HighchartsReact
+      highcharts={Highcharts}
+      options={options}
+      containerProps={{ style: { width: '100%', height: '100%' } }}
+    />
+  );
 }

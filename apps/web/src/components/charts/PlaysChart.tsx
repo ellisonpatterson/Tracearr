@@ -25,6 +25,7 @@ export function PlaysChart({ data, isLoading, height = 200, period = 'month' }: 
         style: {
           fontFamily: 'inherit',
         },
+        reflow: true,
       },
       title: {
         text: undefined,
@@ -126,6 +127,32 @@ export function PlaysChart({ data, isLoading, height = 200, period = 'month' }: 
           data: data.map((d) => d.count),
         },
       ],
+      responsive: {
+        rules: [
+          {
+            condition: {
+              maxWidth: 400,
+            },
+            chartOptions: {
+              xAxis: {
+                labels: {
+                  style: {
+                    fontSize: '9px',
+                  },
+                  step: Math.ceil(data.length / 6),
+                },
+              },
+              yAxis: {
+                labels: {
+                  style: {
+                    fontSize: '9px',
+                  },
+                },
+              },
+            },
+          },
+        ],
+      },
     };
   }, [data, height, period]);
 
@@ -144,5 +171,11 @@ export function PlaysChart({ data, isLoading, height = 200, period = 'month' }: 
     );
   }
 
-  return <HighchartsReact highcharts={Highcharts} options={options} />;
+  return (
+    <HighchartsReact
+      highcharts={Highcharts}
+      options={options}
+      containerProps={{ style: { width: '100%', height: '100%' } }}
+    />
+  );
 }

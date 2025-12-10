@@ -37,6 +37,7 @@ export function PlatformChart({ data, isLoading, height = 200 }: PlatformChartPr
         style: {
           fontFamily: 'inherit',
         },
+        reflow: true,
       },
       title: {
         text: undefined,
@@ -85,6 +86,25 @@ export function PlatformChart({ data, isLoading, height = 200 }: PlatformChartPr
           })),
         },
       ],
+      responsive: {
+        rules: [
+          {
+            condition: {
+              maxWidth: 400,
+            },
+            chartOptions: {
+              legend: {
+                align: 'center',
+                verticalAlign: 'bottom',
+                layout: 'horizontal',
+                itemStyle: {
+                  fontSize: '10px',
+                },
+              },
+            },
+          },
+        ],
+      },
     };
   }, [data, height]);
 
@@ -103,5 +123,11 @@ export function PlatformChart({ data, isLoading, height = 200 }: PlatformChartPr
     );
   }
 
-  return <HighchartsReact highcharts={Highcharts} options={options} />;
+  return (
+    <HighchartsReact
+      highcharts={Highcharts}
+      options={options}
+      containerProps={{ style: { width: '100%', height: '100%' } }}
+    />
+  );
 }

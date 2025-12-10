@@ -34,6 +34,7 @@ export function ConcurrentChart({ data, isLoading, height = 250, period = 'month
         style: {
           fontFamily: 'inherit',
         },
+        reflow: true,
       },
       title: {
         text: undefined,
@@ -188,6 +189,39 @@ export function ConcurrentChart({ data, isLoading, height = 250, period = 'month
           },
         },
       ],
+      responsive: {
+        rules: [
+          {
+            condition: {
+              maxWidth: 400,
+            },
+            chartOptions: {
+              legend: {
+                floating: false,
+                align: 'center',
+                verticalAlign: 'bottom',
+                itemStyle: {
+                  fontSize: '10px',
+                },
+              },
+              xAxis: {
+                labels: {
+                  style: {
+                    fontSize: '9px',
+                  },
+                },
+              },
+              yAxis: {
+                labels: {
+                  style: {
+                    fontSize: '9px',
+                  },
+                },
+              },
+            },
+          },
+        ],
+      },
     };
   }, [data, height, period]);
 
@@ -206,5 +240,11 @@ export function ConcurrentChart({ data, isLoading, height = 250, period = 'month
     );
   }
 
-  return <HighchartsReact highcharts={Highcharts} options={options} />;
+  return (
+    <HighchartsReact
+      highcharts={Highcharts}
+      options={options}
+      containerProps={{ style: { width: '100%', height: '100%' } }}
+    />
+  );
 }

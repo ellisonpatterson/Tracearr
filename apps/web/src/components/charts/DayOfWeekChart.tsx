@@ -29,6 +29,7 @@ export function DayOfWeekChart({ data, isLoading, height = 250 }: DayOfWeekChart
         style: {
           fontFamily: 'inherit',
         },
+        reflow: true,
       },
       title: {
         text: undefined,
@@ -89,6 +90,24 @@ export function DayOfWeekChart({ data, isLoading, height = 250 }: DayOfWeekChart
           data: data.map((d) => d.count),
         },
       ],
+      responsive: {
+        rules: [
+          {
+            condition: {
+              maxWidth: 400,
+            },
+            chartOptions: {
+              xAxis: {
+                labels: {
+                  style: {
+                    fontSize: '9px',
+                  },
+                },
+              },
+            },
+          },
+        ],
+      },
     };
   }, [data, height]);
 
@@ -107,5 +126,11 @@ export function DayOfWeekChart({ data, isLoading, height = 250 }: DayOfWeekChart
     );
   }
 
-  return <HighchartsReact highcharts={Highcharts} options={options} />;
+  return (
+    <HighchartsReact
+      highcharts={Highcharts}
+      options={options}
+      containerProps={{ style: { width: '100%', height: '100%' } }}
+    />
+  );
 }

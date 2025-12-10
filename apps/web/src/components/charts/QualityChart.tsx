@@ -36,6 +36,7 @@ export function QualityChart({ data, isLoading, height = 250 }: QualityChartProp
         style: {
           fontFamily: 'inherit',
         },
+        reflow: true,
       },
       title: {
         text: undefined,
@@ -90,6 +91,25 @@ export function QualityChart({ data, isLoading, height = 250 }: QualityChartProp
           ],
         },
       ],
+      responsive: {
+        rules: [
+          {
+            condition: {
+              maxWidth: 400,
+            },
+            chartOptions: {
+              legend: {
+                align: 'center',
+                verticalAlign: 'bottom',
+                layout: 'horizontal',
+                itemStyle: {
+                  fontSize: '10px',
+                },
+              },
+            },
+          },
+        ],
+      },
     };
   }, [data, height]);
 
@@ -108,5 +128,11 @@ export function QualityChart({ data, isLoading, height = 250 }: QualityChartProp
     );
   }
 
-  return <HighchartsReact highcharts={Highcharts} options={options} />;
+  return (
+    <HighchartsReact
+      highcharts={Highcharts}
+      options={options}
+      containerProps={{ style: { width: '100%', height: '100%' } }}
+    />
+  );
 }
