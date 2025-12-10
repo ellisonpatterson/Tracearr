@@ -277,8 +277,12 @@ async function isToolkitAvailable(): Promise<boolean> {
 async function createContinuousAggregates(): Promise<void> {
   const hasToolkit = await isToolkitAvailable();
 
-  // Drop old unused aggregate (platform stats use prepared statement instead)
+  // Drop old unused aggregates
+  // daily_plays_by_platform: platform stats use prepared statement instead
+  // daily_play_patterns/hourly_play_patterns: never wired up, missing server_id for multi-server filtering
   await db.execute(sql`DROP MATERIALIZED VIEW IF EXISTS daily_plays_by_platform CASCADE`);
+  await db.execute(sql`DROP MATERIALIZED VIEW IF EXISTS daily_play_patterns CASCADE`);
+  await db.execute(sql`DROP MATERIALIZED VIEW IF EXISTS hourly_play_patterns CASCADE`);
 
   if (hasToolkit) {
     // Use HyperLogLog for accurate distinct play counting
@@ -309,34 +313,6 @@ async function createContinuousAggregates(): Promise<void> {
         SUM(COALESCE(duration_ms, 0)) AS total_duration_ms
       FROM sessions
       GROUP BY day, server_id
-      WITH NO DATA
-    `);
-
-    // Daily play patterns (day of week) with HyperLogLog
-    await db.execute(sql`
-      CREATE MATERIALIZED VIEW IF NOT EXISTS daily_play_patterns
-      WITH (timescaledb.continuous, timescaledb.materialized_only = false) AS
-      SELECT
-        time_bucket('1 week', started_at) AS week,
-        EXTRACT(DOW FROM started_at)::int AS day_of_week,
-        hyperloglog(32768, COALESCE(reference_id, id)) AS plays_hll,
-        SUM(COALESCE(duration_ms, 0)) AS total_duration_ms
-      FROM sessions
-      GROUP BY week, day_of_week
-      WITH NO DATA
-    `);
-
-    // Hourly play patterns with HyperLogLog
-    await db.execute(sql`
-      CREATE MATERIALIZED VIEW IF NOT EXISTS hourly_play_patterns
-      WITH (timescaledb.continuous, timescaledb.materialized_only = false) AS
-      SELECT
-        time_bucket('1 day', started_at) AS day,
-        EXTRACT(HOUR FROM started_at)::int AS hour_of_day,
-        hyperloglog(32768, COALESCE(reference_id, id)) AS plays_hll,
-        SUM(COALESCE(duration_ms, 0)) AS total_duration_ms
-      FROM sessions
-      GROUP BY day, hour_of_day
       WITH NO DATA
     `);
 
@@ -402,32 +378,6 @@ async function createContinuousAggregates(): Promise<void> {
     `);
 
     await db.execute(sql`
-      CREATE MATERIALIZED VIEW IF NOT EXISTS daily_play_patterns
-      WITH (timescaledb.continuous) AS
-      SELECT
-        time_bucket('1 week', started_at) AS week,
-        EXTRACT(DOW FROM started_at)::int AS day_of_week,
-        COUNT(*) AS play_count,
-        SUM(COALESCE(duration_ms, 0)) AS total_duration_ms
-      FROM sessions
-      GROUP BY week, day_of_week
-      WITH NO DATA
-    `);
-
-    await db.execute(sql`
-      CREATE MATERIALIZED VIEW IF NOT EXISTS hourly_play_patterns
-      WITH (timescaledb.continuous) AS
-      SELECT
-        time_bucket('1 day', started_at) AS day,
-        EXTRACT(HOUR FROM started_at)::int AS hour_of_day,
-        COUNT(*) AS play_count,
-        SUM(COALESCE(duration_ms, 0)) AS total_duration_ms
-      FROM sessions
-      GROUP BY day, hour_of_day
-      WITH NO DATA
-    `);
-
-    await db.execute(sql`
       CREATE MATERIALIZED VIEW IF NOT EXISTS daily_stats_summary
       WITH (timescaledb.continuous) AS
       SELECT
@@ -474,25 +424,6 @@ async function setupRefreshPolicies(): Promise<void> {
 
   await db.execute(sql`
     SELECT add_continuous_aggregate_policy('daily_plays_by_server',
-      start_offset => INTERVAL '3 days',
-      end_offset => INTERVAL '1 hour',
-      schedule_interval => INTERVAL '5 minutes',
-      if_not_exists => true
-    )
-  `);
-
-  // daily_play_patterns uses 1 week buckets, so start_offset must be >= 1 week
-  await db.execute(sql`
-    SELECT add_continuous_aggregate_policy('daily_play_patterns',
-      start_offset => INTERVAL '2 weeks',
-      end_offset => INTERVAL '1 hour',
-      schedule_interval => INTERVAL '5 minutes',
-      if_not_exists => true
-    )
-  `);
-
-  await db.execute(sql`
-    SELECT add_continuous_aggregate_policy('hourly_play_patterns',
       start_offset => INTERVAL '3 days',
       end_offset => INTERVAL '1 hour',
       schedule_interval => INTERVAL '5 minutes',
@@ -643,8 +574,6 @@ export async function initTimescaleDB(): Promise<{
   const expectedAggregates = [
     'daily_plays_by_user',
     'daily_plays_by_server',
-    'daily_play_patterns',
-    'hourly_play_patterns',
     'daily_stats_summary',
     'hourly_concurrent_streams',
   ];
