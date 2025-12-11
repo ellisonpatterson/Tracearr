@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
-import { Loader2, Server, ExternalLink, Monitor, ChevronRight, Wifi, Globe, User, KeyRound } from 'lucide-react';
+import { Loader2, ExternalLink, User, KeyRound } from 'lucide-react';
+import { MediaServerIcon } from '@/components/icons/MediaServerIcon';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,6 +16,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { api, tokenStorage, type PlexServerInfo } from '@/lib/api';
 import { LogoIcon } from '@/components/brand/Logo';
+import { PlexServerSelector } from '@/components/auth/PlexServerSelector';
 
 // Plex brand color
 const PLEX_COLOR = 'bg-[#E5A00D] hover:bg-[#C88A0B]';
@@ -162,7 +164,7 @@ export function Login() {
   };
 
   // Connect to selected Plex server
-  const handlePlexServerSelect = async (serverUri: string, serverName: string) => {
+  const handlePlexServerSelect = async (serverUri: string, serverName: string, clientIdentifier: string) => {
     if (!plexTempToken) return;
 
     setConnectingToServer(serverName);
@@ -172,6 +174,7 @@ export function Login() {
         tempToken: plexTempToken,
         serverUri,
         serverName,
+        clientIdentifier,
       });
 
       if (result.accessToken && result.refreshToken) {
@@ -288,52 +291,14 @@ export function Login() {
               Choose which Plex Media Server to monitor
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {plexServers.map((server) => (
-              <div key={server.name} className="space-y-2">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <Monitor className="h-4 w-4" />
-                  {server.name}
-                  <span className="text-xs text-muted-foreground">
-                    ({server.platform} • v{server.version})
-                  </span>
-                </div>
-                <div className="space-y-1 pl-6">
-                  {server.connections.map((conn) => (
-                    <Button
-                      key={conn.uri}
-                      variant="outline"
-                      className="w-full justify-between text-left h-auto py-2"
-                      onClick={() => handlePlexServerSelect(conn.uri, server.name)}
-                      disabled={connectingToServer !== null}
-                    >
-                      <div className="flex items-center gap-2">
-                        {conn.local ? (
-                          <Wifi className="h-3 w-3 text-green-500" />
-                        ) : (
-                          <Globe className="h-3 w-3 text-blue-500" />
-                        )}
-                        <span className="text-xs">
-                          {conn.local ? 'Local' : 'Remote'}: {conn.address}:{conn.port}
-                        </span>
-                      </div>
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            ))}
-
-            {connectingToServer && (
-              <div className="flex items-center justify-center gap-2 pt-4 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Connecting to {connectingToServer}...
-              </div>
-            )}
-
-            <Button variant="ghost" className="w-full mt-4" onClick={resetPlexAuth}>
-              Cancel
-            </Button>
+          <CardContent>
+            <PlexServerSelector
+              servers={plexServers}
+              onSelect={handlePlexServerSelect}
+              connecting={connectingToServer !== null}
+              connectingToServer={connectingToServer}
+              onCancel={resetPlexAuth}
+            />
           </CardContent>
         </Card>
       </div>
@@ -395,7 +360,7 @@ export function Login() {
                 className={`w-full ${PLEX_COLOR} text-white`}
                 onClick={handlePlexLogin}
               >
-                <Server className="mr-2 h-4 w-4" />
+                <MediaServerIcon type="plex" className="mr-2 h-4 w-4" />
                 {needsSetup ? 'Sign up with Plex' : 'Sign in with Plex'}
               </Button>
 
