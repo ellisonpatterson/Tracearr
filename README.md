@@ -176,7 +176,7 @@ REDIS_URL=redis://localhost:6379
 
 # Security
 JWT_SECRET=your-secret-here
-ENCRYPTION_KEY=32-byte-hex-key
+COOKIE_SECRET=your-cookie-secret-here
 
 # GeoIP (optional, for location detection)
 MAXMIND_LICENSE_KEY=your-maxmind-key

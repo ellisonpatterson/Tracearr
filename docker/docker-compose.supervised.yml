@@ -25,7 +25,6 @@ services:
       # Optional: Override auto-generated secrets
       # - JWT_SECRET=${JWT_SECRET}
       # - COOKIE_SECRET=${COOKIE_SECRET}
-      # - ENCRYPTION_KEY=${ENCRYPTION_KEY}
     volumes:
       - tracearr_postgres:/data/postgres
       - tracearr_redis:/data/redis
