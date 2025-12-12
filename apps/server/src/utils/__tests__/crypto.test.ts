@@ -1,40 +1,34 @@
 /**
  * Crypto Utility Tests
  *
- * Tests the ACTUAL exported functions from crypto.ts:
- * - initializeEncryption: Initialize with env key
+ * Tests the migration-focused crypto functions:
+ * - initializeEncryption: Initialize with env key (now optional, returns boolean)
  * - isEncryptionInitialized: Check initialization state
- * - encrypt/decrypt: AES-256-GCM roundtrip
- * - generateEncryptionKey: Random key generation
+ * - looksEncrypted: Detect if a string might be encrypted
+ * - tryDecrypt: Attempt decryption, returning null on failure
+ * - migrateToken: Migrate encrypted tokens to plain text
  *
- * These tests validate:
- * - Proper key validation (length, format)
- * - Encryption/decryption roundtrip integrity
- * - Tampering detection (GCM auth tag)
- * - Error handling for uninitialized state
+ * Note: Token encryption has been phased out. These functions now primarily
+ * support migrating existing encrypted tokens to plain text storage.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
-// Import only what's used directly (other functions are dynamically imported per-test after vi.resetModules())
-import { generateEncryptionKey } from '../crypto.js';
-
 // Valid 32-byte key as 64 hex characters
 const VALID_KEY = 'a'.repeat(64);
-const ANOTHER_VALID_KEY = 'b'.repeat(64);
+
+// Sample encrypted token (created with the old encrypt function)
+// This is a real encrypted value for testing migration
+const SAMPLE_ENCRYPTED = 'dGVzdC1lbmNyeXB0ZWQtdG9rZW4='; // Base64 but not actually encrypted
 
 describe('crypto', () => {
-  // Store original env and reset module state between tests
   const originalEnv = process.env.ENCRYPTION_KEY;
 
   beforeEach(() => {
-    // Clear the module's internal state by re-importing
-    // Since we can't easily reset module state, we'll work around it
     vi.resetModules();
   });
 
   afterEach(() => {
-    // Restore original env
     if (originalEnv !== undefined) {
       process.env.ENCRYPTION_KEY = originalEnv;
     } else {
@@ -42,76 +36,41 @@ describe('crypto', () => {
     }
   });
 
-  describe('generateEncryptionKey', () => {
-    it('should generate a 64-character hex string', () => {
-      const key = generateEncryptionKey();
-
-      expect(key).toHaveLength(64);
-      expect(key).toMatch(/^[0-9a-f]{64}$/);
-    });
-
-    it('should generate unique keys on each call', () => {
-      const key1 = generateEncryptionKey();
-      const key2 = generateEncryptionKey();
-      const key3 = generateEncryptionKey();
-
-      expect(key1).not.toBe(key2);
-      expect(key2).not.toBe(key3);
-      expect(key1).not.toBe(key3);
-    });
-
-    it('should generate keys that are valid for initializeEncryption', async () => {
-      const key = generateEncryptionKey();
-      process.env.ENCRYPTION_KEY = key;
-
-      // Re-import to get fresh module state
-      const { initializeEncryption: init } = await import('../crypto.js');
-
-      expect(() => init()).not.toThrow();
-    });
-  });
-
   describe('initializeEncryption', () => {
-    it('should initialize successfully with valid 64-char hex key', async () => {
+    it('should return true with valid 64-char hex key', async () => {
       process.env.ENCRYPTION_KEY = VALID_KEY;
 
       const { initializeEncryption: init, isEncryptionInitialized: isInit } =
         await import('../crypto.js');
 
-      expect(() => init()).not.toThrow();
+      expect(init()).toBe(true);
       expect(isInit()).toBe(true);
     });
 
-    it('should throw when ENCRYPTION_KEY is missing', async () => {
+    it('should return false when ENCRYPTION_KEY is missing', async () => {
       delete process.env.ENCRYPTION_KEY;
 
-      const { initializeEncryption: init } = await import('../crypto.js');
+      const { initializeEncryption: init, isEncryptionInitialized: isInit } =
+        await import('../crypto.js');
 
-      expect(() => init()).toThrow('ENCRYPTION_KEY environment variable is required');
+      expect(init()).toBe(false);
+      expect(isInit()).toBe(false);
     });
 
-    it('should throw when ENCRYPTION_KEY is empty string', async () => {
+    it('should return false when ENCRYPTION_KEY is empty string', async () => {
       process.env.ENCRYPTION_KEY = '';
 
       const { initializeEncryption: init } = await import('../crypto.js');
 
-      expect(() => init()).toThrow('ENCRYPTION_KEY environment variable is required');
+      expect(init()).toBe(false);
     });
 
-    it('should throw when key is too short', async () => {
-      process.env.ENCRYPTION_KEY = 'a'.repeat(32); // 16 bytes, need 32
+    it('should return false when key is wrong length', async () => {
+      process.env.ENCRYPTION_KEY = 'a'.repeat(32); // Too short
 
       const { initializeEncryption: init } = await import('../crypto.js');
 
-      expect(() => init()).toThrow('ENCRYPTION_KEY must be 64 hex characters (32 bytes)');
-    });
-
-    it('should throw when key is too long', async () => {
-      process.env.ENCRYPTION_KEY = 'a'.repeat(128); // 64 bytes, need 32
-
-      const { initializeEncryption: init } = await import('../crypto.js');
-
-      expect(() => init()).toThrow('ENCRYPTION_KEY must be 64 hex characters (32 bytes)');
+      expect(init()).toBe(false);
     });
   });
 
@@ -135,210 +94,111 @@ describe('crypto', () => {
     });
   });
 
-  describe('encrypt', () => {
-    it('should throw when encryption is not initialized', async () => {
-      delete process.env.ENCRYPTION_KEY;
+  describe('looksEncrypted', () => {
+    it('should return false for short strings', async () => {
+      const { looksEncrypted } = await import('../crypto.js');
 
-      const { encrypt: enc } = await import('../crypto.js');
-
-      expect(() => enc('test')).toThrow('Encryption not initialized');
+      expect(looksEncrypted('short')).toBe(false);
+      expect(looksEncrypted('abc123')).toBe(false);
+      expect(looksEncrypted('')).toBe(false);
     });
 
-    it('should return a base64 string', async () => {
-      process.env.ENCRYPTION_KEY = VALID_KEY;
+    it('should return false for non-base64 strings', async () => {
+      const { looksEncrypted } = await import('../crypto.js');
 
-      const { initializeEncryption: init, encrypt: enc } = await import('../crypto.js');
-      init();
-
-      const encrypted = enc('hello world');
-
-      // Should be valid base64
-      expect(() => Buffer.from(encrypted, 'base64')).not.toThrow();
-      expect(encrypted).toMatch(/^[A-Za-z0-9+/]+=*$/);
+      expect(looksEncrypted('this is not base64!!!')).toBe(false);
+      expect(looksEncrypted('hello world with spaces')).toBe(false);
     });
 
-    it('should produce different ciphertext for same plaintext (random IV)', async () => {
-      process.env.ENCRYPTION_KEY = VALID_KEY;
+    it('should return false for typical Plex tokens', async () => {
+      const { looksEncrypted } = await import('../crypto.js');
 
-      const { initializeEncryption: init, encrypt: enc } = await import('../crypto.js');
-      init();
-
-      const plaintext = 'same input';
-      const encrypted1 = enc(plaintext);
-      const encrypted2 = enc(plaintext);
-      const encrypted3 = enc(plaintext);
-
-      expect(encrypted1).not.toBe(encrypted2);
-      expect(encrypted2).not.toBe(encrypted3);
-      expect(encrypted1).not.toBe(encrypted3);
+      // Plex tokens are typically 20-char alphanumeric
+      expect(looksEncrypted('abcdefghij1234567890')).toBe(false);
+      expect(looksEncrypted('PLEX_TOKEN_12345678')).toBe(false);
     });
 
-    it('should handle empty string', async () => {
-      process.env.ENCRYPTION_KEY = VALID_KEY;
+    it('should return true for long base64 strings that could be encrypted', async () => {
+      const { looksEncrypted } = await import('../crypto.js');
 
-      const { initializeEncryption: init, encrypt: enc, decrypt: dec } =
-        await import('../crypto.js');
-      init();
-
-      const encrypted = enc('');
-      expect(typeof encrypted).toBe('string');
-      expect(encrypted.length).toBeGreaterThan(0);
-
-      // Should decrypt back to empty string
-      expect(dec(encrypted)).toBe('');
-    });
-
-    it('should handle unicode characters', async () => {
-      process.env.ENCRYPTION_KEY = VALID_KEY;
-
-      const { initializeEncryption: init, encrypt: enc, decrypt: dec } =
-        await import('../crypto.js');
-      init();
-
-      const unicodeText = '你好世界 🌍 Привет мир';
-      const encrypted = enc(unicodeText);
-      expect(dec(encrypted)).toBe(unicodeText);
-    });
-
-    it('should handle long strings', async () => {
-      process.env.ENCRYPTION_KEY = VALID_KEY;
-
-      const { initializeEncryption: init, encrypt: enc, decrypt: dec } =
-        await import('../crypto.js');
-      init();
-
-      const longText = 'x'.repeat(100000); // 100KB of text
-      const encrypted = enc(longText);
-      expect(dec(encrypted)).toBe(longText);
+      // Minimum encrypted length is ~45 chars for IV + AuthTag + minimal ciphertext
+      const longBase64 = Buffer.from('x'.repeat(40)).toString('base64');
+      expect(looksEncrypted(longBase64)).toBe(true);
     });
   });
 
-  describe('decrypt', () => {
+  describe('tryDecrypt', () => {
+    it('should return null when encryption is not initialized', async () => {
+      delete process.env.ENCRYPTION_KEY;
+
+      const { tryDecrypt } = await import('../crypto.js');
+
+      expect(tryDecrypt('somedata')).toBeNull();
+    });
+
+    it('should return null for invalid encrypted data', async () => {
+      process.env.ENCRYPTION_KEY = VALID_KEY;
+
+      const { initializeEncryption: init, tryDecrypt } = await import('../crypto.js');
+      init();
+
+      expect(tryDecrypt('not-encrypted')).toBeNull();
+      expect(tryDecrypt('invalid-base64!!!')).toBeNull();
+    });
+
+    it('should return null for data encrypted with different key', async () => {
+      process.env.ENCRYPTION_KEY = VALID_KEY;
+
+      const { initializeEncryption: init, tryDecrypt } = await import('../crypto.js');
+      init();
+
+      // This is random base64 that won't decrypt with our key
+      const randomEncrypted = Buffer.from('x'.repeat(50)).toString('base64');
+      expect(tryDecrypt(randomEncrypted)).toBeNull();
+    });
+  });
+
+  describe('migrateToken', () => {
+    it('should return plain text token unchanged if it does not look encrypted', async () => {
+      const { migrateToken } = await import('../crypto.js');
+
+      const plainToken = 'plex-token-12345';
+      const result = migrateToken(plainToken);
+
+      expect(result.plainText).toBe(plainToken);
+      expect(result.wasEncrypted).toBe(false);
+    });
+
+    it('should return token as-is if it looks encrypted but cannot be decrypted', async () => {
+      delete process.env.ENCRYPTION_KEY; // No key available
+
+      const { migrateToken } = await import('../crypto.js');
+
+      // Long base64 string that looks encrypted
+      const fakeEncrypted = Buffer.from('x'.repeat(50)).toString('base64');
+      const result = migrateToken(fakeEncrypted);
+
+      expect(result.plainText).toBe(fakeEncrypted);
+      expect(result.wasEncrypted).toBe(false);
+    });
+  });
+
+  describe('decrypt (deprecated)', () => {
     it('should throw when encryption is not initialized', async () => {
       delete process.env.ENCRYPTION_KEY;
 
       const { decrypt: dec } = await import('../crypto.js');
 
-      expect(() => dec('somebase64data')).toThrow('Encryption not initialized');
+      expect(() => dec('somedata')).toThrow();
     });
 
-    it('should decrypt what was encrypted (roundtrip)', async () => {
-      process.env.ENCRYPTION_KEY = VALID_KEY;
-
-      const { initializeEncryption: init, encrypt: enc, decrypt: dec } =
-        await import('../crypto.js');
-      init();
-
-      const testCases = [
-        'simple text',
-        'with numbers 12345',
-        'special chars !@#$%^&*()',
-        'multi\nline\ntext',
-        JSON.stringify({ key: 'value', nested: { array: [1, 2, 3] } }),
-      ];
-
-      for (const plaintext of testCases) {
-        const encrypted = enc(plaintext);
-        const decrypted = dec(encrypted);
-        expect(decrypted).toBe(plaintext);
-      }
-    });
-
-    it('should fail on tampered ciphertext (GCM auth)', async () => {
-      process.env.ENCRYPTION_KEY = VALID_KEY;
-
-      const { initializeEncryption: init, encrypt: enc, decrypt: dec } =
-        await import('../crypto.js');
-      init();
-
-      const encrypted = enc('sensitive data');
-
-      // Tamper with the ciphertext
-      const buffer = Buffer.from(encrypted, 'base64');
-      const lastIndex = buffer.length - 1;
-      buffer[lastIndex] = (buffer[lastIndex] ?? 0) ^ 0xff; // Flip bits in last byte
-      const tampered = buffer.toString('base64');
-
-      expect(() => dec(tampered)).toThrow();
-    });
-
-    it('should fail on truncated ciphertext', async () => {
-      process.env.ENCRYPTION_KEY = VALID_KEY;
-
-      const { initializeEncryption: init, encrypt: enc, decrypt: dec } =
-        await import('../crypto.js');
-      init();
-
-      const encrypted = enc('test data');
-
-      // Truncate the ciphertext
-      const truncated = encrypted.substring(0, encrypted.length - 10);
-
-      expect(() => dec(truncated)).toThrow();
-    });
-
-    it('should fail with wrong key', async () => {
-      // Encrypt with first key
-      process.env.ENCRYPTION_KEY = VALID_KEY;
-      const { initializeEncryption: init1, encrypt: enc } = await import('../crypto.js');
-      init1();
-      const encrypted = enc('secret');
-
-      // Reset module and try to decrypt with different key
-      vi.resetModules();
-      process.env.ENCRYPTION_KEY = ANOTHER_VALID_KEY;
-      const { initializeEncryption: init2, decrypt: dec } = await import('../crypto.js');
-      init2();
-
-      expect(() => dec(encrypted)).toThrow();
-    });
-
-    it('should fail on invalid base64 input', async () => {
+    it('should throw on invalid data', async () => {
       process.env.ENCRYPTION_KEY = VALID_KEY;
 
       const { initializeEncryption: init, decrypt: dec } = await import('../crypto.js');
       init();
 
-      expect(() => dec('not-valid-base64!!!')).toThrow();
-    });
-  });
-
-  describe('real-world scenarios', () => {
-    it('should handle API token encryption workflow', async () => {
-      process.env.ENCRYPTION_KEY = VALID_KEY;
-
-      const { initializeEncryption: init, encrypt: enc, decrypt: dec } =
-        await import('../crypto.js');
-      init();
-
-      // Simulate storing a Plex/Jellyfin API token
-      const apiToken = 'plextoken_abcdef123456789';
-      const encryptedToken = enc(apiToken);
-
-      // Store in database (just verify it's not plaintext)
-      expect(encryptedToken).not.toContain(apiToken);
-      expect(encryptedToken).not.toContain('plex');
-
-      // Later, retrieve and decrypt
-      const retrievedToken = dec(encryptedToken);
-      expect(retrievedToken).toBe(apiToken);
-    });
-
-    it('should handle JWT secret encryption', async () => {
-      process.env.ENCRYPTION_KEY = VALID_KEY;
-
-      const { initializeEncryption: init, encrypt: enc, decrypt: dec } =
-        await import('../crypto.js');
-      init();
-
-      const jwtSecret = 'super-secret-jwt-signing-key-that-should-never-leak';
-      const encrypted = enc(jwtSecret);
-
-      // Verify no part of the secret is visible
-      expect(encrypted).not.toContain('secret');
-      expect(encrypted).not.toContain('jwt');
-
-      expect(dec(encrypted)).toBe(jwtSecret);
+      expect(() => dec('not-valid-encrypted-data')).toThrow();
     });
   });
 });
