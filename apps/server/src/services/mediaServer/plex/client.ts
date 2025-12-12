@@ -5,7 +5,6 @@
  * Provides a unified interface for session tracking, user management, and library access.
  */
 
-import { decrypt } from '../../../utils/crypto.js';
 import { fetchJson, fetchText, plexHeaders } from '../../../utils/http.js';
 import type {
   IMediaServerClient,
@@ -47,7 +46,7 @@ export class PlexClient implements IMediaServerClient, IMediaServerClientWithHis
 
   constructor(config: MediaServerConfig) {
     this.baseUrl = config.url.replace(/\/$/, '');
-    this.token = decrypt(config.token);
+    this.token = config.token;
   }
 
   /**

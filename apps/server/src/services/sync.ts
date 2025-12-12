@@ -13,7 +13,6 @@ import {
   PlexClient,
   type MediaUser,
 } from './mediaServer/index.js';
-import { decrypt } from '../utils/crypto.js';
 import { syncUserFromMediaServer } from './userService.js';
 
 export interface SyncResult {
@@ -149,7 +148,7 @@ export async function syncServer(
     return result;
   }
 
-  const token = decrypt(server.token);
+  const token = server.token;
   const serverUrl = server.url.replace(/\/$/, '');
 
   // Sync users

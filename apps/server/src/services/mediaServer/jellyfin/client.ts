@@ -5,7 +5,6 @@
  * Provides a unified interface for session tracking, user management, and library access.
  */
 
-import { decrypt } from '../../../utils/crypto.js';
 import { fetchJson, jellyfinHeaders } from '../../../utils/http.js';
 import type {
   IMediaServerClient,
@@ -48,7 +47,7 @@ export class JellyfinClient implements IMediaServerClient, IMediaServerClientWit
 
   constructor(config: MediaServerConfig) {
     this.baseUrl = config.url.replace(/\/$/, '');
-    this.apiKey = decrypt(config.token);
+    this.apiKey = config.token;
   }
 
   /**

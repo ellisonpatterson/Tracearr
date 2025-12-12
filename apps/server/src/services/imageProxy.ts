@@ -13,7 +13,7 @@ import { eq } from 'drizzle-orm';
 import { TIME_MS } from '@tracearr/shared';
 import { db } from '../db/client.js';
 import { servers } from '../db/schema.js';
-import { decrypt } from '../utils/crypto.js';
+// Token encryption removed - tokens now stored in plain text (DB is localhost-only)
 
 // Cache directory (in project root/data/image-cache)
 const CACHE_DIR = join(process.cwd(), 'data', 'image-cache');
@@ -190,18 +190,7 @@ export async function proxyImage(options: ProxyOptions): Promise<ProxyResult> {
     };
   }
 
-  // Decrypt server token
-  let token: string;
-  try {
-    token = decrypt(server.token);
-  } catch {
-    const fallbackSvg = getFallbackImage(fallback, width, height);
-    return {
-      data: fallbackSvg,
-      contentType: 'image/svg+xml',
-      cached: false,
-    };
-  }
+  const token = server.token;
 
   // Build image URL based on server type
   let imageUrl: string;

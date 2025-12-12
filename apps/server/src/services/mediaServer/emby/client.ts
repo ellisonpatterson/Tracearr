@@ -7,7 +7,6 @@
  * Based on Emby OpenAPI specification v4.1.1.0
  */
 
-import { decrypt } from '../../../utils/crypto.js';
 import { fetchJson, embyHeaders } from '../../../utils/http.js';
 import type {
   IMediaServerClient,
@@ -50,7 +49,7 @@ export class EmbyClient implements IMediaServerClient, IMediaServerClientWithHis
 
   constructor(config: MediaServerConfig) {
     this.baseUrl = config.url.replace(/\/$/, '');
-    this.apiKey = decrypt(config.token);
+    this.apiKey = config.token;
   }
 
   /**

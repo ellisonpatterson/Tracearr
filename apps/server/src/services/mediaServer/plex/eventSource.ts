@@ -20,7 +20,6 @@ import {
   type PlexPlaySessionNotification,
   type SSEConnectionState,
 } from '@tracearr/shared';
-import { decrypt } from '../../../utils/crypto.js';
 import { plexHeaders } from '../../../utils/http.js';
 
 // EventSource types for Node.js (using eventsource package)
@@ -96,13 +95,13 @@ export class PlexEventSource extends EventEmitter {
     serverId: string;
     serverName: string;
     url: string;
-    token: string; // Encrypted token
+    token: string;
   }) {
     super();
     this.serverId = config.serverId;
     this.serverName = config.serverName;
     this.baseUrl = config.url.replace(/\/$/, '');
-    this.token = decrypt(config.token);
+    this.token = config.token;
   }
 
   /**
