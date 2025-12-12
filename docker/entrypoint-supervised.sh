@@ -56,39 +56,17 @@ if [ -z "$COOKIE_SECRET" ]; then
     fi
 fi
 
-if [ -z "$ENCRYPTION_KEY" ]; then
-    if [ -f /data/tracearr/.encryption_key ]; then
-        export ENCRYPTION_KEY=$(cat /data/tracearr/.encryption_key)
-        log "Loaded ENCRYPTION_KEY from persistent storage"
-    else
-        export ENCRYPTION_KEY=$(openssl rand -hex 32)
-        echo "$ENCRYPTION_KEY" > /data/tracearr/.encryption_key
-        chmod 600 /data/tracearr/.encryption_key
-        log "Generated new ENCRYPTION_KEY"
-    fi
+# ENCRYPTION_KEY is optional - only needed for migrating existing encrypted tokens
+# Load existing key if present (for backward compatibility), but don't generate new ones
+if [ -z "$ENCRYPTION_KEY" ] && [ -f /data/tracearr/.encryption_key ]; then
+    export ENCRYPTION_KEY=$(cat /data/tracearr/.encryption_key)
+    log "Loaded ENCRYPTION_KEY from persistent storage (for token migration)"
 fi
 
 # =============================================================================
 # Initialize PostgreSQL if needed
 # =============================================================================
-if [ ! -f /data/postgres/PG_VERSION ]; then
-    log "Initializing PostgreSQL database..."
-
-    # Ensure data directory exists (may not if bind mount path is new)
-    mkdir -p /data/postgres
-
-    # Handle corrupt/partial initialization (has files but no PG_VERSION)
-    if [ "$(ls -A /data/postgres 2>/dev/null)" ]; then
-        warn "Data directory exists but is not initialized - clearing for fresh init"
-        rm -rf /data/postgres/*
-    fi
-
-    # Ensure postgres owns the data directory
-    chown -R postgres:postgres /data/postgres
-
-    # Initialize the database cluster
-    gosu postgres /usr/lib/postgresql/15/bin/initdb -D /data/postgres
-
+init_postgres_db() {
     # Configure PostgreSQL
     cat >> /data/postgres/postgresql.conf <<EOF
 shared_preload_libraries = 'timescaledb'
@@ -108,8 +86,8 @@ EOF
     gosu postgres /usr/lib/postgresql/15/bin/pg_ctl -D /data/postgres -w start
 
     log "Creating tracearr database and user..."
-    gosu postgres psql -c "CREATE USER tracearr WITH PASSWORD 'tracearr';"
-    gosu postgres psql -c "CREATE DATABASE tracearr OWNER tracearr;"
+    gosu postgres psql -c "CREATE USER tracearr WITH PASSWORD 'tracearr';" 2>/dev/null || true
+    gosu postgres psql -c "CREATE DATABASE tracearr OWNER tracearr;" 2>/dev/null || true
     gosu postgres psql -d tracearr -c "CREATE EXTENSION IF NOT EXISTS timescaledb;"
     gosu postgres psql -d tracearr -c "GRANT ALL PRIVILEGES ON DATABASE tracearr TO tracearr;"
     gosu postgres psql -d tracearr -c "GRANT ALL ON SCHEMA public TO tracearr;"
@@ -118,6 +96,39 @@ EOF
     gosu postgres /usr/lib/postgresql/15/bin/pg_ctl -D /data/postgres -w stop
 
     log "PostgreSQL initialized successfully"
+}
+
+if [ ! -f /data/postgres/PG_VERSION ]; then
+    log "Initializing PostgreSQL database..."
+
+    # Ensure data directory exists (may not if bind mount path is new)
+    mkdir -p /data/postgres
+
+    # Handle corrupt/partial initialization (has files but no PG_VERSION)
+    if [ "$(ls -A /data/postgres 2>/dev/null)" ]; then
+        # Check if this looks like a real database (has pg_control)
+        if [ -f /data/postgres/global/pg_control ]; then
+            # Database files exist but PG_VERSION is missing - try to recover
+            warn "PG_VERSION missing but database files exist - attempting recovery"
+            warn "This can happen after filesystem issues or interrupted shutdowns"
+            echo "15" > /data/postgres/PG_VERSION
+            chown postgres:postgres /data/postgres/PG_VERSION
+            log "Created PG_VERSION file, will attempt to start existing database"
+        else
+            # No pg_control means truly corrupt/empty - safe to reinitialize
+            warn "Data directory has no valid database (missing global/pg_control)"
+            warn "Clearing for fresh initialization..."
+            rm -rf /data/postgres/*
+            chown -R postgres:postgres /data/postgres
+            gosu postgres /usr/lib/postgresql/15/bin/initdb -D /data/postgres
+            init_postgres_db
+        fi
+    else
+        # Empty directory - fresh install
+        chown -R postgres:postgres /data/postgres
+        gosu postgres /usr/lib/postgresql/15/bin/initdb -D /data/postgres
+        init_postgres_db
+    fi
 else
     log "PostgreSQL data directory exists, skipping initialization"
 fi
