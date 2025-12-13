@@ -12,7 +12,6 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import sensible from '@fastify/sensible';
 import { randomUUID } from 'node:crypto';
 import type { AuthUser, ActiveSession } from '@tracearr/shared';
-import { REDIS_KEYS } from '@tracearr/shared';
 
 // Mock the database module before importing routes
 vi.mock('../../db/client.js', () => ({
@@ -20,6 +19,15 @@ vi.mock('../../db/client.js', () => ({
     select: vi.fn(),
     execute: vi.fn(),
   },
+}));
+
+// Mock cache service - need to provide getAllActiveSessions for /active endpoint
+const mockGetAllActiveSessions = vi.fn().mockResolvedValue([]);
+vi.mock('../../services/cache.js', () => ({
+  getCacheService: vi.fn(() => ({
+    getAllActiveSessions: mockGetAllActiveSessions,
+    getSessionById: vi.fn().mockResolvedValue(null),
+  })),
 }));
 
 // Import the mocked db and the routes
@@ -287,11 +295,10 @@ describe('Session Routes', () => {
       const ownerUser = createOwnerUser([serverId]);
       const activeSessions = [createActiveSession({ serverId })];
 
-      const redisMock = {
-        get: vi.fn().mockResolvedValue(JSON.stringify(activeSessions)),
-      };
+      // Mock the cache service response
+      mockGetAllActiveSessions.mockResolvedValueOnce(activeSessions);
 
-      app = await buildTestApp(ownerUser, redisMock);
+      app = await buildTestApp(ownerUser);
 
       const response = await app.inject({
         method: 'GET',
@@ -301,16 +308,16 @@ describe('Session Routes', () => {
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
       expect(body.data).toHaveLength(1);
-      expect(redisMock.get).toHaveBeenCalledWith(REDIS_KEYS.ACTIVE_SESSIONS);
+      expect(mockGetAllActiveSessions).toHaveBeenCalled();
     });
 
     it('should return empty array when cache is empty', async () => {
       const ownerUser = createOwnerUser();
-      const redisMock = {
-        get: vi.fn().mockResolvedValue(null),
-      };
 
-      app = await buildTestApp(ownerUser, redisMock);
+      // Mock empty cache
+      mockGetAllActiveSessions.mockResolvedValueOnce([]);
+
+      app = await buildTestApp(ownerUser);
 
       const response = await app.inject({
         method: 'GET',
@@ -332,11 +339,10 @@ describe('Session Routes', () => {
         createActiveSession({ serverId: serverId2 }),
       ];
 
-      const redisMock = {
-        get: vi.fn().mockResolvedValue(JSON.stringify(activeSessions)),
-      };
+      // Mock the cache service response
+      mockGetAllActiveSessions.mockResolvedValueOnce(activeSessions);
 
-      app = await buildTestApp(viewerUser, redisMock);
+      app = await buildTestApp(viewerUser);
 
       const response = await app.inject({
         method: 'GET',
@@ -351,11 +357,11 @@ describe('Session Routes', () => {
 
     it('should handle invalid JSON in cache', async () => {
       const ownerUser = createOwnerUser();
-      const redisMock = {
-        get: vi.fn().mockResolvedValue('invalid json'),
-      };
 
-      app = await buildTestApp(ownerUser, redisMock);
+      // getAllActiveSessions handles parsing internally, so this just tests empty
+      mockGetAllActiveSessions.mockResolvedValueOnce([]);
+
+      app = await buildTestApp(ownerUser);
 
       const response = await app.inject({
         method: 'GET',

@@ -28,6 +28,14 @@ vi.mock('../../db/prepared.js', () => ({
   },
 }));
 
+// Mock cache service - need to provide getAllActiveSessions for active stream count
+const mockGetAllActiveSessions = vi.fn().mockResolvedValue([]);
+vi.mock('../../services/cache.js', () => ({
+  getCacheService: vi.fn(() => ({
+    getAllActiveSessions: mockGetAllActiveSessions,
+  })),
+}));
+
 // Import the mocked modules and the routes
 import {
   playsCountSince,
@@ -214,11 +222,11 @@ describe('Dashboard Stats Routes', () => {
       const ownerUser = createOwnerUser();
       const activeSessions = [createActiveSession(), createActiveSession(), createActiveSession()];
 
+      // Mock the cache service to return active sessions
+      mockGetAllActiveSessions.mockResolvedValueOnce(activeSessions);
+
       const redisMock = {
-        get: vi
-          .fn()
-          .mockResolvedValueOnce(null) // No dashboard cache
-          .mockResolvedValueOnce(JSON.stringify(activeSessions)), // Active sessions cache
+        get: vi.fn().mockResolvedValueOnce(null), // No dashboard cache
         setex: vi.fn().mockResolvedValue('OK'),
       };
 
@@ -272,11 +280,11 @@ describe('Dashboard Stats Routes', () => {
     it('should handle invalid JSON in active sessions cache gracefully', async () => {
       const ownerUser = createOwnerUser();
 
+      // Cache service handles invalid JSON internally and returns empty array
+      mockGetAllActiveSessions.mockResolvedValueOnce([]);
+
       const redisMock = {
-        get: vi
-          .fn()
-          .mockResolvedValueOnce(null) // No dashboard cache
-          .mockResolvedValueOnce('invalid sessions json'), // Invalid active sessions
+        get: vi.fn().mockResolvedValueOnce(null), // No dashboard cache
         setex: vi.fn().mockResolvedValue('OK'),
       };
 
