@@ -264,14 +264,14 @@ jobs:
         run: |
           APK_FILE=$(ls *.apk 2>/dev/null || ls *.aab 2>/dev/null)
           echo "Uploading $APK_FILE to EAS..."
-          eas build:upload --platform android --path "./${APK_FILE}"
+          eas upload --platform android --build-path "./${APK_FILE}" --non-interactive
 
       - name: Upload iOS to EAS
         if: needs.build-ios.result == 'success'
         run: |
           IPA_FILE=$(ls *.ipa)
           echo "Uploading $IPA_FILE to EAS..."
-          eas build:upload --platform ios --path "./${IPA_FILE}"
+          eas upload --platform ios --build-path "./${IPA_FILE}" --non-interactive
 
       - name: Decode Google Service Account
         if: inputs.distribution == 'store' && needs.build-android.result == 'success'
