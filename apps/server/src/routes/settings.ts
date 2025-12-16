@@ -147,6 +147,7 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
       // Build update object
       const updateData: Partial<{
         allowGuestAccess: boolean;
+        unitSystem: 'metric' | 'imperial';
         discordWebhookUrl: string | null;
         customWebhookUrl: string | null;
         webhookFormat: 'json' | 'ntfy' | 'apprise' | null;
@@ -166,6 +167,10 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
 
       if (body.data.allowGuestAccess !== undefined) {
         updateData.allowGuestAccess = body.data.allowGuestAccess;
+      }
+
+      if (body.data.unitSystem !== undefined) {
+        updateData.unitSystem = body.data.unitSystem;
       }
 
       if (body.data.discordWebhookUrl !== undefined) {
