@@ -407,6 +407,7 @@ export function Login() {
               )}
 
               {/* Conditional Auth Forms - Show only one at a time with transition */}
+              {(hasJellyfinServers || hasPasswordAuth || needsSetup) && (
               <div className="relative min-h-[200px]">
                 {/* Jellyfin Admin Login Form */}
                 {showJellyfinForm && hasJellyfinServers && (
@@ -568,6 +569,7 @@ export function Login() {
                   </div>
                 )}
               </div>
+              )}
 
             </>
           )}
