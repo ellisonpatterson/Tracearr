@@ -810,11 +810,23 @@ function NotificationSettings() {
 
 function AccessSettings() {
   const { data: settings, isLoading } = useSettings();
+  const { data: serversData } = useServers();
+  const { user } = useAuth();
   const updateSettings = useUpdateSettings();
 
   const handleToggle = (key: keyof SettingsType, value: boolean) => {
     updateSettings.mutate({ [key]: value });
   };
+
+  // Only show auth method selector when applicable:
+  // - User has local credentials (hasPassword) OR
+  // - There's at least one Jellyfin server configured
+  // Handle both array and wrapped response formats
+  const servers = Array.isArray(serversData)
+    ? serversData
+    : (serversData as unknown as { data?: Server[] })?.data ?? [];
+  const hasJellyfinServer = servers.some((s) => s.type === 'jellyfin');
+  const showAuthMethodSelector = user?.hasPassword || hasJellyfinServer;
 
   if (isLoading) {
     return (
@@ -854,36 +866,38 @@ function AccessSettings() {
           />
         </div>
 
-        <div className="space-y-2">
-          <Label className="text-base">Primary Authentication Method</Label>
-          <p className="text-sm text-muted-foreground">
-            Choose which authentication method is shown by default on the login page
-          </p>
-          <Select
-            value={settings?.primaryAuthMethod ?? 'local'}
-            onValueChange={(value: 'jellyfin' | 'local') => {
-              updateSettings.mutate({ primaryAuthMethod: value });
-            }}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="local">
-                <div className="flex items-center gap-2">
-                  <KeyRound className="h-4 w-4" />
-                  <span>Local Account</span>
-                </div>
-              </SelectItem>
-              <SelectItem value="jellyfin">
-                <div className="flex items-center gap-2">
-                  <MediaServerIcon type="jellyfin" className="h-4 w-4" />
-                  <span>Jellyfin Admin</span>
-                </div>
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        {showAuthMethodSelector && (
+          <div className="space-y-2">
+            <Label className="text-base">Primary Authentication Method</Label>
+            <p className="text-sm text-muted-foreground">
+              Choose which authentication method is shown by default on the login page
+            </p>
+            <Select
+              value={settings?.primaryAuthMethod ?? 'local'}
+              onValueChange={(value: 'jellyfin' | 'local') => {
+                updateSettings.mutate({ primaryAuthMethod: value });
+              }}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="local">
+                  <div className="flex items-center gap-2">
+                    <KeyRound className="h-4 w-4" />
+                    <span>Local Account</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="jellyfin">
+                  <div className="flex items-center gap-2">
+                    <MediaServerIcon type="jellyfin" className="h-4 w-4" />
+                    <span>Jellyfin Admin</span>
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
         <div className="rounded-lg bg-muted/50 p-4">
           <p className="text-sm text-muted-foreground">
