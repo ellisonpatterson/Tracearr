@@ -41,15 +41,15 @@ export const TautulliHistoryRecordSchema = z.object({
   user_id: z.coerce.number(),
   user: z.string(),
   friendly_name: z.string().nullable(),
-  user_thumb: z.string(), // User avatar URL
+  user_thumb: z.string().nullable(), // User avatar URL
 
   // Player/client info
-  platform: z.string(),
-  product: z.string(),
-  player: z.string(),
+  platform: z.string().nullable(),
+  product: z.string().nullable(),
+  player: z.string().nullable(),
   ip_address: z.string(),
-  machine_id: z.string(),
-  location: z.string(),
+  machine_id: z.string().nullable(),
+  location: z.string().nullable(),
 
   // Boolean-like flags (0/1) - can be null in some Tautulli versions
   live: z.number().nullable(),
@@ -58,7 +58,7 @@ export const TautulliHistoryRecordSchema = z.object({
 
   // Media info
   media_type: z.string(),
-  rating_key: z.number(), // Always number per actual API
+  rating_key: z.coerce.number(), // Coerce handles string/number inconsistency
   // These CAN be empty string for movies, number for episodes
   parent_rating_key: numberOrEmptyString,
   grandparent_rating_key: numberOrEmptyString,
@@ -77,15 +77,15 @@ export const TautulliHistoryRecordSchema = z.object({
   guid: z.string(),
 
   // Playback info
-  transcode_decision: z.string(),
-  percent_complete: z.number(),
-  watched_status: z.number(), // 0, 0.75, 1
+  transcode_decision: z.string().nullable(),
+  percent_complete: z.coerce.number(),
+  watched_status: z.coerce.number(), // 0, 0.75, 1
 
   // Session grouping
   group_count: z.number().nullable(),
   group_ids: z.string().nullable(),
   state: z.string().nullable(),
-  session_key: z.number().nullable(), // Actually just number | null per API
+  session_key: z.union([z.coerce.number(), z.null()]), // Can be string, number, or null
 });
 
 export const TautulliHistoryResponseSchema = z.object({
