@@ -20,11 +20,47 @@ END $$;
 
 --> statement-breakpoint
 
--- Step 2: Disable columnstore (required for TimescaleDB 2.17+ with hypercore/columnstore)
--- This must happen BEFORE decompression and ALTER TABLE operations
+-- Step 2: Convert all columnstore chunks to rowstore (TimescaleDB 2.18+)
+-- Must happen BEFORE disabling columnstore
+DO $$
+DECLARE
+  chunk_name text;
+BEGIN
+  -- Try convert_to_rowstore for each chunk (TimescaleDB 2.18+)
+  FOR chunk_name IN
+    SELECT format('%I.%I', c.chunk_schema, c.chunk_name)
+    FROM timescaledb_information.chunks c
+    WHERE c.hypertable_name = 'sessions'
+  LOOP
+    BEGIN
+      EXECUTE format('CALL convert_to_rowstore(%L::regclass)', chunk_name);
+    EXCEPTION
+      WHEN undefined_function THEN
+        -- convert_to_rowstore doesn't exist (older TimescaleDB), try decompress instead
+        BEGIN
+          EXECUTE format('SELECT decompress_chunk(%L::regclass, if_compressed => true)', chunk_name);
+        EXCEPTION
+          WHEN OTHERS THEN NULL;
+        END;
+      WHEN OTHERS THEN
+        -- Chunk might already be rowstore or other error, continue
+        NULL;
+    END;
+  END LOOP;
+EXCEPTION
+  WHEN undefined_table THEN
+    -- TimescaleDB not installed or no chunks table, skip
+    NULL;
+  WHEN SQLSTATE '42704' THEN
+    -- Table is not a hypertable (e.g., in test environment), skip
+    NULL;
+END $$;
+
+--> statement-breakpoint
+
+-- Step 3: Disable columnstore (required for TimescaleDB 2.17+ with hypercore/columnstore)
 DO $$
 BEGIN
-  -- Try to disable columnstore (TimescaleDB 2.17+)
   EXECUTE 'ALTER TABLE sessions SET (timescaledb.enable_columnstore = false)';
 EXCEPTION
   WHEN undefined_object THEN
@@ -38,30 +74,6 @@ EXCEPTION
     NULL;
   WHEN OTHERS THEN
     -- Any other error (columnstore not enabled, etc.), skip
-    NULL;
-END $$;
-
---> statement-breakpoint
-
--- Step 3: Decompress all chunks (preserves all data, just uncompresses)
-DO $$
-DECLARE
-  chunk_id regclass;
-BEGIN
-  FOR chunk_id IN
-    SELECT format('%I.%I', c.chunk_schema, c.chunk_name)::regclass
-    FROM timescaledb_information.chunks c
-    WHERE c.hypertable_name = 'sessions'
-    AND c.is_compressed = true
-  LOOP
-    PERFORM decompress_chunk(chunk_id, if_compressed => true);
-  END LOOP;
-EXCEPTION
-  WHEN undefined_table THEN
-    -- TimescaleDB not installed or no chunks, skip
-    NULL;
-  WHEN SQLSTATE '42704' THEN
-    -- Table is not a hypertable (e.g., in test environment), skip
     NULL;
 END $$;
 
