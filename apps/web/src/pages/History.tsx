@@ -101,15 +101,23 @@ function parseFiltersFromUrl(searchParams: URLSearchParams): HistoryFilters {
   if (search) filters.search = search;
 
   const startDate = searchParams.get('startDate');
+  const endDate = searchParams.get('endDate');
+
   if (startDate) {
     const parsed = new Date(startDate);
     if (!isNaN(parsed.getTime())) filters.startDate = parsed;
   }
 
-  const endDate = searchParams.get('endDate');
   if (endDate) {
     const parsed = new Date(endDate);
     if (!isNaN(parsed.getTime())) filters.endDate = parsed;
+  }
+
+  // Default to 30d if no date range specified
+  if (!filters.startDate && !filters.endDate) {
+    const now = new Date();
+    filters.startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    filters.endDate = now;
   }
 
   const watched = searchParams.get('watched');
@@ -171,9 +179,11 @@ export function History() {
   const { data, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage } =
     useHistorySessions(filters);
 
-  const { data: filterOptions, isLoading: filterOptionsLoading } = useFilterOptions(
-    filters.serverId
-  );
+  const { data: filterOptions, isLoading: filterOptionsLoading } = useFilterOptions({
+    serverId: filters.serverId,
+    startDate: filters.startDate,
+    endDate: filters.endDate,
+  });
 
   // Intersection observer for infinite scroll
   const { ref: loadMoreRef, inView } = useInView({

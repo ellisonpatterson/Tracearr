@@ -502,10 +502,13 @@ class ApiClient {
     },
     /**
      * Get available filter values for dropdowns on the History page.
+     * Accepts optional date range to match history query filters.
      */
-    filterOptions: (serverId?: string) => {
+    filterOptions: (params?: { serverId?: string; startDate?: Date; endDate?: Date }) => {
       const searchParams = new URLSearchParams();
-      if (serverId) searchParams.set('serverId', serverId);
+      if (params?.serverId) searchParams.set('serverId', params.serverId);
+      if (params?.startDate) searchParams.set('startDate', params.startDate.toISOString());
+      if (params?.endDate) searchParams.set('endDate', params.endDate.toISOString());
       return this.request<HistoryFilterOptions>(
         `/sessions/filter-options?${searchParams.toString()}`
       );

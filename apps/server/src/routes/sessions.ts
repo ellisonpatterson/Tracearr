@@ -728,8 +728,25 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
    * and users to populate filter dropdowns on the History page.
    */
   app.get('/filter-options', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const query = serverIdFilterSchema.safeParse(request.query);
-    const serverId = query.success ? query.data.serverId : undefined;
+    const query = request.query as {
+      serverId?: string;
+      startDate?: string;
+      endDate?: string;
+    };
+    const serverId = query.serverId;
+    const startDate = query.startDate ? new Date(query.startDate) : undefined;
+    const endDate = query.endDate ? new Date(query.endDate) : undefined;
+
+    if (startDate && isNaN(startDate.getTime())) {
+      return reply.badRequest('Invalid startDate format. Use ISO 8601 format.');
+    }
+    if (endDate && isNaN(endDate.getTime())) {
+      return reply.badRequest('Invalid endDate format. Use ISO 8601 format.');
+    }
+    if (startDate && endDate && startDate > endDate) {
+      return reply.badRequest('startDate must be before endDate');
+    }
+
     const authUser = request.user;
 
     // Build server access conditions
@@ -758,8 +775,14 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
-    // Only look at sessions from the last 90 days for efficiency
-    serverConditions.push(sql`s.started_at >= NOW() - INTERVAL '90 days'`);
+    if (startDate && endDate) {
+      serverConditions.push(sql`s.started_at >= ${startDate}`);
+      serverConditions.push(sql`s.started_at <= ${endDate}`);
+    } else if (startDate) {
+      serverConditions.push(sql`s.started_at >= ${startDate}`);
+    } else if (endDate) {
+      serverConditions.push(sql`s.started_at <= ${endDate}`);
+    }
 
     const whereClause =
       serverConditions.length > 0 ? sql`WHERE ${sql.join(serverConditions, sql` AND `)}` : sql``;
@@ -811,7 +834,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
             AND geo_country IS NOT NULL
             GROUP BY geo_country
             ORDER BY count DESC
-            LIMIT 50
+            LIMIT 250
           `),
       // Cities
       db.execute(sql`
