@@ -1,28 +1,27 @@
-# Tracearr - PostgreSQL 18 Deployment (Portainer/Proxmox Ready)
+# Tracearr - PostgreSQL 18 Deployment (Experimental)
 #
-# WARNING - THIS IS NOT AN UPGRADE FOR EXISTING INSTALLATIONS
-# THIS SHOULD ONLY BE USED FOR NEW INSTALLATIONS
-# IF YOU HAVE PREVIOUS VOLUMES OR MOUNTS, DELETE THEM OR RENAME THEM PRIOR TO DEPLOYMENT
+# WARNING: NEW INSTALLATIONS ONLY
+# Do NOT use with existing data volumes. PostgreSQL 18 data format is
+# incompatible with PostgreSQL 15/16. Delete or rename old volumes first.
 #
-# Uses the latest PostgreSQL 18 with TimescaleDB HA and Toolkit.
-# Includes HyperLogLog for optimized dashboard aggregates.
+# Uses PostgreSQL 18 with TimescaleDB HA image (includes Toolkit extension).
 #
-# SETUP:
-# 1. Copy this file to your deployment location
-# 2. Create a .env file with your secrets (see below)
-# 3. Deploy via Portainer Stack or: docker compose -f docker-compose.pg18.yml up -d
+# REQUIREMENTS:
+#   - ~1GB RAM for Tracearr container
+#   - Secrets must be generated manually (see below)
 #
-# REQUIRED ENVIRONMENT VARIABLES (.env file):
-#   JWT_SECRET=<random-32-char-string>
-#   COOKIE_SECRET=<random-32-char-string>
+# DEPLOY:
+#   # 1. Generate secrets
+#   echo "JWT_SECRET=$(openssl rand -hex 32)" > .env
+#   echo "COOKIE_SECRET=$(openssl rand -hex 32)" >> .env
 #
-# Generate secrets with: openssl rand -hex 32
+#   # 2. Start
+#   docker compose -f docker-compose.pg18.yml up -d
 #
 # OPTIONAL ENVIRONMENT VARIABLES:
 #   PORT=3000              # External port mapping
 #   TZ=America/New_York    # Timezone
 #   DB_PASSWORD=tracearr   # Database password
-#   CORS_ORIGIN=*          # CORS allowed origins
 #   LOG_LEVEL=info         # Log level (debug, info, warn, error)
 
 services:
