@@ -388,7 +388,73 @@ async function processServerSessions(
       } else {
         // Get existing ACTIVE session to check for state changes
         const existingSession = await findActiveSession(server.id, processed.sessionKey);
-        if (!existingSession) continue;
+        if (!existingSession) {
+          // Issue #120: Stale cache entry - session key is in Redis but no active session exists in DB
+          // Remove stale cache entry and create session with proper locking to prevent duplicates.
+          console.log(
+            `[Poller] Stale cache detected for ${processed.sessionKey} - removing from cache`
+          );
+          cachedSessionKeys.delete(sessionKey);
+
+          // Use distributed lock to prevent race condition with SSE
+          if (!cacheService) {
+            console.warn('[Poller] Cache service not available, skipping stale session recovery');
+            continue;
+          }
+
+          let recentSessions = recentSessionsMap.get(serverUserId);
+          if (!recentSessions && serverUserId) {
+            const recentForUser = await batchGetRecentUserSessions([serverUserId]);
+            recentSessions = recentForUser.get(serverUserId) ?? [];
+            recentSessionsMap.set(serverUserId, recentSessions);
+          }
+          recentSessions = recentSessions ?? [];
+
+          const createResult = await cacheService.withSessionCreateLock(
+            server.id,
+            processed.sessionKey,
+            async () => {
+              // Double-check inside lock - SSE might have created it
+              const existingWithSameKey = await findActiveSession(server.id, processed.sessionKey);
+              if (existingWithSameKey) {
+                cachedSessionKeys.add(sessionKey);
+                console.log(
+                  `[Poller] Session created by SSE for ${processed.sessionKey}, skipping`
+                );
+                return null;
+              }
+
+              return createSessionWithRulesAtomic({
+                processed,
+                server: { id: server.id, name: server.name, type: server.type },
+                serverUser: userDetail,
+                geo,
+                activeRules,
+                recentSessions,
+              });
+            }
+          );
+
+          if (createResult) {
+            const { insertedSession, violationResults } = createResult;
+            const activeSession = buildActiveSession({
+              session: insertedSession,
+              processed,
+              user: userDetail,
+              geo,
+              server,
+            });
+            newSessions.push(activeSession);
+            cachedSessionKeys.add(sessionKey);
+
+            try {
+              await broadcastViolations(violationResults, insertedSession.id, pubSubService);
+            } catch (err) {
+              console.error('[Poller] Failed to broadcast violations:', err);
+            }
+          }
+          continue;
+        }
 
         // Issue #57: Detect media change (e.g., Emby "Play Next Episode")
         // When Emby plays next episode, it reuses sessionKey but changes ratingKey.
