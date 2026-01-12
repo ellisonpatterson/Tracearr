@@ -205,8 +205,8 @@ export function JobsSettings() {
     return (
       <div className="space-y-4">
         <Card>
-          <CardHeader className="pb-3">
-            <Skeleton className="h-5 w-40" />
+          <CardHeader>
+            <Skeleton className="h-6 w-40" />
             <Skeleton className="h-4 w-72" />
           </CardHeader>
           <CardContent>
@@ -221,12 +221,12 @@ export function JobsSettings() {
     <div className="space-y-4">
       {/* Available Jobs */}
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Wrench className="h-4 w-4" />
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Wrench className="h-5 w-5" />
             Maintenance Jobs
           </CardTitle>
-          <CardDescription className="text-sm">
+          <CardDescription>
             Run maintenance tasks to update historical data or optimize the database
           </CardDescription>
         </CardHeader>
@@ -372,16 +372,14 @@ export function JobsSettings() {
 
       {/* Job History */}
       <Card>
-        <CardHeader className="pb-3">
+        <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Clock className="h-4 w-4" />
+              <CardTitle className="flex items-center gap-2">
+                <Clock className="h-5 w-5" />
                 Job History
               </CardTitle>
-              <CardDescription className="text-sm">
-                Recent maintenance job executions
-              </CardDescription>
+              <CardDescription>Recent maintenance job executions</CardDescription>
             </div>
             <Button
               variant="ghost"
