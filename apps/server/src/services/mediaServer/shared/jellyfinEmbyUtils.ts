@@ -141,27 +141,15 @@ export function getBitrate(session: Record<string, unknown>): number {
 }
 
 /**
- * Get video dimensions from session for resolution display
- * Checks TranscodingInfo first (for transcoded resolution), then falls back to source
+ * Get source video dimensions from session.
+ * Returns dimensions from MediaStreams (the original file), NOT TranscodingInfo.
+ * Transcoded output dimensions are stored separately in streamVideoDetails.
  */
 export function getVideoDimensions(session: Record<string, unknown>): {
   videoWidth?: number;
   videoHeight?: number;
 } {
-  // Check transcoding info first for transcoded resolution
-  const transcodingInfo = getNestedObject(session, 'TranscodingInfo');
-  if (transcodingInfo) {
-    const width = parseOptionalNumber(transcodingInfo.Width);
-    const height = parseOptionalNumber(transcodingInfo.Height);
-    if ((width && width > 0) || (height && height > 0)) {
-      return {
-        videoWidth: width && width > 0 ? width : undefined,
-        videoHeight: height && height > 0 ? height : undefined,
-      };
-    }
-  }
-
-  // Fall back to source media dimensions
+  // Get source media dimensions from MediaStreams (original file)
   const nowPlaying = getNestedObject(session, 'NowPlayingItem');
 
   // Get MediaStreams - Jellyfin style or Emby style
