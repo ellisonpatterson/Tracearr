@@ -65,8 +65,7 @@ export function formatWatchTime(ms: number): string {
   const remainingHours = hours % 24;
   const days = Math.floor(hours / 24);
   const remainingDays = days % 365;
-  const noOfLeaps = Math.floor((days / 4) / 365);
-  const years = Math.floor(Math.floor(days / 365) - (noOfLeaps / 365) + (remainingDays / 365));
+  const years = Math.floor(days / 365);
 
   if (years > 0) {
     return `${years}yr ${remainingDays}d ${remainingHours}h`;
